@@ -46,13 +46,13 @@ DROID_SESSIONS_DIR="$HOME/.factory/sessions,/backup/factory/sessions" ccusage dr
 
 ## Report Views
 
-| Focused view            | Description                  | See also                                |
-| ----------------------- | ---------------------------- | --------------------------------------- |
-| `ccusage droid daily`   | Aggregate usage by date      | [Daily Usage](/guide/daily-reports)     |
-| `ccusage droid monthly` | Aggregate usage by month     | [Monthly Usage](/guide/monthly-reports) |
-| `ccusage droid session` | Group usage by Droid session | [Session Usage](/guide/session-reports) |
-| `ccusage droid model` | Aggregate session snapshots by current model | [Model & Workspace](/guide/model-workspace-reports) |
-| `ccusage droid workspace` | Aggregate usage by session workspace | [Model & Workspace](/guide/model-workspace-reports) |
+| Focused view              | Description                                  | See also                                            |
+| ------------------------- | -------------------------------------------- | --------------------------------------------------- |
+| `ccusage droid daily`     | Aggregate usage by date                      | [Daily Usage](/guide/daily-reports)                 |
+| `ccusage droid monthly`   | Aggregate usage by month                     | [Monthly Usage](/guide/monthly-reports)             |
+| `ccusage droid session`   | Group usage by Droid session                 | [Session Usage](/guide/session-reports)             |
+| `ccusage droid model`     | Aggregate session snapshots by current model | [Model & Workspace](/guide/model-workspace-reports) |
+| `ccusage droid workspace` | Aggregate usage by session workspace         | [Model & Workspace](/guide/model-workspace-reports) |
 
 These views support `--json` for structured output, `--compact` for narrow terminals, and `--offline` for cached pricing data.
 

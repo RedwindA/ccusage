@@ -35,12 +35,12 @@ CODEX_HOME="$HOME/.codex,$HOME/.codex-work,$HOME/codex-exec-logs" ccusage codex 
 
 ## Report Views
 
-| Focused view            | Description                  | See also                                |
-| ----------------------- | ---------------------------- | --------------------------------------- |
-| `ccusage codex daily`   | Aggregate usage by date      | [Daily Usage](/guide/daily-reports)     |
-| `ccusage codex monthly` | Aggregate usage by month     | [Monthly Usage](/guide/monthly-reports) |
-| `ccusage codex session` | Group usage by Codex session | [Session Usage](/guide/session-reports) |
-| `ccusage codex model` | Aggregate usage by model | [Model & Workspace](/guide/model-workspace-reports) |
+| Focused view              | Description                         | See also                                            |
+| ------------------------- | ----------------------------------- | --------------------------------------------------- |
+| `ccusage codex daily`     | Aggregate usage by date             | [Daily Usage](/guide/daily-reports)                 |
+| `ccusage codex monthly`   | Aggregate usage by month            | [Monthly Usage](/guide/monthly-reports)             |
+| `ccusage codex session`   | Group usage by Codex session        | [Session Usage](/guide/session-reports)             |
+| `ccusage codex model`     | Aggregate usage by model            | [Model & Workspace](/guide/model-workspace-reports) |
 | `ccusage codex workspace` | Aggregate usage by full session cwd | [Model & Workspace](/guide/model-workspace-reports) |
 
 These views support `--json`, `--compact`, `--offline`, and `--speed auto|standard|fast`. Model and workspace reports read the full cwd from Codex session metadata and preserve the existing replay, fallback-model, long-context, and speed-pricing rules.

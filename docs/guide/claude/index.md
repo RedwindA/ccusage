@@ -42,13 +42,13 @@ Claude Code can retain logs for only 30 days by default. To review older Claude 
 
 ## Report Views
 
-| Focused view             | Description                   | See also                                |
-| ------------------------ | ----------------------------- | --------------------------------------- |
-| `ccusage claude daily`   | Aggregate usage by date       | [Daily Usage](/guide/daily-reports)     |
-| `ccusage claude weekly`  | Aggregate usage by week       | [Weekly Usage](/guide/weekly-reports)   |
-| `ccusage claude monthly` | Aggregate usage by month      | [Monthly Usage](/guide/monthly-reports) |
-| `ccusage claude session` | Group usage by Claude session | [Session Usage](/guide/session-reports) |
-| `ccusage claude model` | Aggregate usage by model | [Model & Workspace](/guide/model-workspace-reports) |
+| Focused view               | Description                          | See also                                            |
+| -------------------------- | ------------------------------------ | --------------------------------------------------- |
+| `ccusage claude daily`     | Aggregate usage by date              | [Daily Usage](/guide/daily-reports)                 |
+| `ccusage claude weekly`    | Aggregate usage by week              | [Weekly Usage](/guide/weekly-reports)               |
+| `ccusage claude monthly`   | Aggregate usage by month             | [Monthly Usage](/guide/monthly-reports)             |
+| `ccusage claude session`   | Group usage by Claude session        | [Session Usage](/guide/session-reports)             |
+| `ccusage claude model`     | Aggregate usage by model             | [Model & Workspace](/guide/model-workspace-reports) |
 | `ccusage claude workspace` | Aggregate usage by full recorded cwd | [Model & Workspace](/guide/model-workspace-reports) |
 
 ## Claude Code Features
