@@ -61,6 +61,8 @@ npx ccusage@latest
 
 ccusage reads local usage data from coding agent CLIs and turns it into daily, weekly, monthly, and session reports.
 
+Claude Code, Codex, and Droid also provide focused `model` and `workspace` reports across a filtered date range.
+
 | Source             | Focused command example  |
 | ------------------ | ------------------------ |
 | Claude Code        | `ccusage claude daily`   |
@@ -120,9 +122,12 @@ bunx ccusage statusline  # Claude Code status line for hooks (Beta)
 # Source-focused reports and options
 bunx ccusage claude daily --mode display
 bunx ccusage codex daily --speed fast
+bunx ccusage codex model --speed fast
+bunx ccusage claude workspace --breakdown
 bunx ccusage opencode weekly
 bunx ccusage amp session
 bunx ccusage droid daily
+bunx ccusage droid workspace --breakdown
 bunx ccusage codebuff daily
 bunx ccusage hermes daily
 bunx ccusage goose daily
@@ -168,6 +173,7 @@ bunx ccusage monthly --compact  # Compact monthly report
 - ⏰ **5-Hour Blocks Report**: Track usage within Claude's billing windows with active block monitoring
 - 🚀 **Statusline Integration**: Compact usage display for Claude Code status bar hooks (Beta)
 - 🤖 **Model Tracking**: See which models are used across supported sources
+- 🗂️ **Model & Workspace Reports**: Aggregate Claude Code, Codex, or Droid usage across time by model or full recorded workspace
 - 📊 **Model Breakdown**: View per-model cost breakdown with `--breakdown` flag
 - 📅 **Date Filtering**: Filter reports by date range using `--since` and `--until`
 - ⏱️ **Recent Periods**: Jump to today, this week, or this month with `--last 1` on any daily, weekly, or monthly report

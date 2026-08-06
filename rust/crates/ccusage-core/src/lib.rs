@@ -3,6 +3,7 @@ use std::{fmt, io};
 pub mod agent_report;
 pub mod cost;
 pub mod date_utils;
+pub mod dimension;
 pub mod fast;
 pub mod home;
 pub mod last_window;
@@ -28,6 +29,10 @@ pub use cost::{
     missing_pricing_model_for_usage,
 };
 pub use date_utils::*;
+pub use dimension::{
+    DimensionAttribution, DimensionRow, dimension_report_json, print_dimension_table,
+    summarize_dimensions,
+};
 pub use last_window::{PeriodUnit, last_periods_since};
 pub use logger::{debug_log, log_level};
 pub use output::{

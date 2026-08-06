@@ -113,6 +113,9 @@ pub struct LoadedEntry {
     pub project: Arc<str>,
     pub session_id: Arc<str>,
     pub project_path: Arc<str>,
+    /// Full working directory recorded by the source. Kept separate from
+    /// `project_path`, whose existing report semantics are source-specific.
+    pub workspace_path: Arc<str>,
     pub cost: f64,
     pub extra_total_tokens: u64,
     pub credits: Option<f64>,

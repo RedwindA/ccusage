@@ -29,7 +29,10 @@ chunking, and ordered parallel reads.
 - `paths::usage_files`
 - `load_entries`
 - `load_daily_summaries`
+- `run_dimension`
 - `usage_limit_reset_time_from_line`
+
+Model and workspace reports reuse the full loader. Workspace attribution reads each usage record's top-level `cwd` and falls back to the existing path-derived project directory; `project_path` remains unchanged for legacy reports.
 
 ## Depends on
 

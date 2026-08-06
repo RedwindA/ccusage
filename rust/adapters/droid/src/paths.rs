@@ -19,7 +19,7 @@ pub(super) fn discover_settings_files() -> Result<Vec<PathBuf>> {
         .collect())
 }
 
-fn droid_session_paths() -> Result<Vec<PathBuf>> {
+pub(super) fn droid_session_paths() -> Result<Vec<PathBuf>> {
     let raw_paths = if let Ok(paths) = env::var(DROID_SESSIONS_DIR_ENV) {
         paths
             .split(',')

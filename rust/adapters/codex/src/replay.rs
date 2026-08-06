@@ -198,7 +198,7 @@ fn read_parent_usage(
 
 fn read_usage_events(sessions_dir: &Path, path: &Path) -> Vec<(String, CodexRawUsage)> {
     let mut usage = Vec::new();
-    let _ = visit_codex_session_file(sessions_dir, path, None, |event| {
+    let _ = visit_codex_session_file(sessions_dir, path, None, false, |event, _workspace| {
         usage.push((
             event.timestamp,
             CodexRawUsage {

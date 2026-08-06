@@ -686,6 +686,7 @@ mod tests {
             project: Arc::from(fixture.project_path),
             session_id: Arc::from(fixture.session_id),
             project_path: Arc::from(fixture.project_path),
+            workspace_path: Arc::from(fixture.project_path),
             cost: fixture.cost,
             extra_total_tokens: fixture.extra_total_tokens,
             credits: fixture.credits,

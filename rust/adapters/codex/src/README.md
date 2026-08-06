@@ -10,6 +10,8 @@ ${CODEX_HOME:-~/.codex}/archived_sessions/
 When both directories contain the same relative JSONL path for one Codex home,
 the active `sessions/` copy wins.
 
+Dimension reports also read `session_meta.payload.cwd` into a source-local loaded envelope. The public token-usage event remains workspace-agnostic so existing consumers and period-report JSON retain their shape.
+
 Relevant JSONL event:
 
 - `type === "event_msg"`

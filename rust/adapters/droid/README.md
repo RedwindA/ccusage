@@ -26,6 +26,9 @@ chunking, and ordered parallel reads.
 - `report::report_from_rows`
 - `report::summarize_entries`
 - `run`
+- `run_dimension`
+
+Workspace attribution prefers settings `cwd`, sibling JSONL `session_start.cwd`, an encoded parent directory, then `unknown`. Droid token totals are cumulative session snapshots, so dimension model details are explicitly marked with `sessionSnapshot` attribution.
 
 ## Depends on
 

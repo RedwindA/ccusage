@@ -48,6 +48,9 @@ chunking, and ordered parallel reads.
 - `types::merge_codex_service_tiers`
 - `run`
 - `report_json`
+- `run_dimension`
+
+Model and workspace reports retain workspace metadata in a source-local envelope populated from `session_meta.payload.cwd`; the public `CodexTokenUsageEvent` stays unchanged. Dimension aggregation continues to apply replay dedupe, model fallback, service-tier, and per-request long-context pricing semantics.
 
 ## Depends on
 

@@ -9,6 +9,7 @@
 		"claude_session_options": ["shared_claude_options", "session_options"],
 		"claude_weekly_options": ["shared_claude_options", "weekly_options", "last_options"],
 		"codex_period_options": ["codex_options", "last_options"],
+		"codex_dimension_options": ["dimension_options", "codex_speed_options"],
 		"openclaw_combined_options": ["agent_options", "openclaw_options"],
 		"openclaw_period_options": ["agent_options", "openclaw_options", "last_options"],
 		"pi_combined_options": ["agent_options", "pi_options"],
@@ -168,6 +169,14 @@
 				{
 					"name": "statusline",
 					"description": "Display compact status line for Claude Code hooks with hybrid time+file caching (Beta)"
+				},
+				{
+					"name": "model",
+					"description": "Show usage aggregated by model"
+				},
+				{
+					"name": "workspace",
+					"description": "Show usage aggregated by workspace"
 				}
 			]
 		},
@@ -208,6 +217,18 @@
 			"options": "statusline_options"
 		},
 		{
+			"path": ["claude", "model"],
+			"description": "Show Claude Code usage aggregated by model",
+			"usage": "ccusage claude model <OPTIONS>",
+			"options": "dimension_options"
+		},
+		{
+			"path": ["claude", "workspace"],
+			"description": "Show Claude Code usage aggregated by workspace",
+			"usage": "ccusage claude workspace <OPTIONS>",
+			"options": "dimension_options"
+		},
+		{
 			"path": ["codex"],
 			"description": "Usage reports for codex.",
 			"usage": "ccusage codex <COMMANDS>",
@@ -223,6 +244,14 @@
 				{
 					"name": "session",
 					"description": "Show Codex token usage grouped by session"
+				},
+				{
+					"name": "model",
+					"description": "Show Codex token usage aggregated by model"
+				},
+				{
+					"name": "workspace",
+					"description": "Show Codex token usage aggregated by workspace"
 				}
 			]
 		},
@@ -243,6 +272,18 @@
 			"description": "Show Codex token usage grouped by session",
 			"usage": "ccusage codex session <OPTIONS>",
 			"options": "codex_options"
+		},
+		{
+			"path": ["codex", "model"],
+			"description": "Show Codex token usage aggregated by model",
+			"usage": "ccusage codex model <OPTIONS>",
+			"options": "codex_dimension_options"
+		},
+		{
+			"path": ["codex", "workspace"],
+			"description": "Show Codex token usage aggregated by workspace",
+			"usage": "ccusage codex workspace <OPTIONS>",
+			"options": "codex_dimension_options"
 		},
 		{
 			"path": ["opencode"],
@@ -344,6 +385,14 @@
 				{
 					"name": "session",
 					"description": "Show Droid usage grouped by session"
+				},
+				{
+					"name": "model",
+					"description": "Show Droid usage aggregated by model"
+				},
+				{
+					"name": "workspace",
+					"description": "Show Droid usage aggregated by workspace"
 				}
 			]
 		},
@@ -364,6 +413,18 @@
 			"description": "Show Droid usage grouped by session",
 			"usage": "ccusage droid session <OPTIONS>",
 			"options": "agent_options"
+		},
+		{
+			"path": ["droid", "model"],
+			"description": "Show Droid usage aggregated by model",
+			"usage": "ccusage droid model <OPTIONS>",
+			"options": "dimension_options"
+		},
+		{
+			"path": ["droid", "workspace"],
+			"description": "Show Droid usage aggregated by workspace",
+			"usage": "ccusage droid workspace <OPTIONS>",
+			"options": "dimension_options"
 		},
 		{
 			"path": ["codebuff"],

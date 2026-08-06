@@ -166,6 +166,7 @@ pub(super) fn to_loaded_entry(
         project: Arc::from("hermes"),
         session_id: Arc::from(entry.session_id.as_str()),
         project_path: Arc::from("Hermes"),
+        workspace_path: Arc::from("unknown"),
         cost,
         credits: None,
         extra_total_tokens: entry.reasoning_tokens,

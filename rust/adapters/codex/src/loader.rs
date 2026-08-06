@@ -19,21 +19,38 @@ use super::{
     replay::CodexReplayPlan,
 };
 
+#[derive(Clone)]
+pub(super) struct CodexLoadedEvent {
+    pub(super) event: CodexTokenUsageEvent,
+    pub(super) workspace_path: Option<String>,
+}
+
 pub fn load_codex_events_from_directory(
     sessions_dir: &Path,
     single_thread: bool,
 ) -> Result<Vec<CodexTokenUsageEvent>> {
+    let events = load_codex_loaded_events_from_directory(sessions_dir, single_thread, false)?;
+    Ok(events.into_iter().map(|event| event.event).collect())
+}
+
+fn load_codex_loaded_events_from_directory(
+    sessions_dir: &Path,
+    single_thread: bool,
+    include_workspace: bool,
+) -> Result<Vec<CodexLoadedEvent>> {
     let files = collect_codex_usage_files(sessions_dir);
     let replay_plan = CodexReplayPlan::new([(sessions_dir, files.as_slice())], single_thread);
     let mut events = if single_thread {
         files
             .iter()
-            .flat_map(|file| read_codex_session_file(sessions_dir, file, &replay_plan))
+            .flat_map(|file| {
+                read_codex_session_file(sessions_dir, file, &replay_plan, include_workspace)
+            })
             .collect::<Vec<_>>()
     } else {
-        read_codex_session_files_parallel(sessions_dir, &files, &replay_plan)
+        read_codex_session_files_parallel(sessions_dir, &files, &replay_plan, include_workspace)
     };
-    dedupe_codex_events(&mut events);
+    dedupe_codex_loaded_events(&mut events);
     Ok(events)
 }
 
@@ -51,8 +68,27 @@ fn load_codex_events_from_sources(
     sources: &[CodexUsageSource],
     single_thread: bool,
 ) -> Result<Vec<CodexTokenUsageEvent>> {
+    load_codex_loaded_events_from_sources(sources, single_thread, false)
+        .map(|events| events.into_iter().map(|event| event.event).collect())
+}
+
+pub(super) fn load_codex_dimension_events(shared: &SharedArgs) -> Result<Vec<CodexLoadedEvent>> {
+    progress::track_usage_load(progress::UsageLoadAgent("Codex"), shared.json, || {
+        load_codex_loaded_events_from_sources(&codex_usage_sources()?, shared.single_thread, true)
+    })
+}
+
+fn load_codex_loaded_events_from_sources(
+    sources: &[CodexUsageSource],
+    single_thread: bool,
+    include_workspace: bool,
+) -> Result<Vec<CodexLoadedEvent>> {
     if let [source] = sources {
-        return load_codex_events_from_directory(&source.dir, single_thread);
+        return load_codex_loaded_events_from_directory(
+            &source.dir,
+            single_thread,
+            include_workspace,
+        );
     }
 
     let groups = collect_deduped_codex_usage_files(sources);
@@ -68,14 +104,21 @@ fn load_codex_events_from_sources(
             group
                 .files
                 .iter()
-                .flat_map(|file| read_codex_session_file(&group.dir, file, &replay_plan))
+                .flat_map(|file| {
+                    read_codex_session_file(&group.dir, file, &replay_plan, include_workspace)
+                })
                 .collect::<Vec<_>>()
         } else {
-            read_codex_session_files_parallel(&group.dir, &group.files, &replay_plan)
+            read_codex_session_files_parallel(
+                &group.dir,
+                &group.files,
+                &replay_plan,
+                include_workspace,
+            )
         };
         events.append(&mut source_events);
     }
-    dedupe_codex_events(&mut events);
+    dedupe_codex_loaded_events(&mut events);
     Ok(events)
 }
 
@@ -83,7 +126,8 @@ fn read_codex_session_files_parallel(
     sessions_dir: &Path,
     files: &[PathBuf],
     replay_plan: &CodexReplayPlan,
-) -> Vec<CodexTokenUsageEvent> {
+    include_workspace: bool,
+) -> Vec<CodexLoadedEvent> {
     let worker_count = thread::available_parallelism()
         .map(usize::from)
         .unwrap_or(1)
@@ -91,7 +135,9 @@ fn read_codex_session_files_parallel(
     if worker_count <= 1 {
         return files
             .iter()
-            .flat_map(|file| read_codex_session_file(sessions_dir, file, replay_plan))
+            .flat_map(|file| {
+                read_codex_session_file(sessions_dir, file, replay_plan, include_workspace)
+            })
             .collect();
     }
 
@@ -105,7 +151,12 @@ fn read_codex_session_files_parallel(
                     .map(|index| {
                         (
                             index,
-                            read_codex_session_file(sessions_dir, &files[index], replay_plan),
+                            read_codex_session_file(
+                                sessions_dir,
+                                &files[index],
+                                replay_plan,
+                                include_workspace,
+                            ),
                         )
                     })
                     .collect::<Vec<_>>()
@@ -132,37 +183,42 @@ fn read_codex_session_file(
     sessions_dir: &Path,
     path: &Path,
     replay_plan: &CodexReplayPlan,
-) -> Vec<CodexTokenUsageEvent> {
+    include_workspace: bool,
+) -> Vec<CodexLoadedEvent> {
     let mut events = Vec::new();
     let _ = visit_codex_session_file(
         sessions_dir,
         path,
         replay_plan.replay_prefix(path),
-        |event| {
-            events.push(event);
+        include_workspace,
+        |event, workspace_path| {
+            events.push(CodexLoadedEvent {
+                event,
+                workspace_path: workspace_path.map(str::to_string),
+            });
             Ok(())
         },
     );
     events
 }
 
-fn dedupe_codex_events(events: &mut Vec<CodexTokenUsageEvent>) {
+fn dedupe_codex_loaded_events(events: &mut Vec<CodexLoadedEvent>) {
     let mut indexes = FxHashMap::<_, usize>::default();
-    let mut deduped = Vec::<CodexTokenUsageEvent>::with_capacity(events.len());
+    let mut deduped = Vec::<CodexLoadedEvent>::with_capacity(events.len());
     for event in events.drain(..) {
         let key = (
-            CompactString::new(&event.timestamp),
-            event.model.as_deref().map(CompactString::new),
-            event.input_tokens,
-            event.cached_input_tokens,
-            event.output_tokens,
-            event.reasoning_output_tokens,
-            event.total_tokens,
+            CompactString::new(&event.event.timestamp),
+            event.event.model.as_deref().map(CompactString::new),
+            event.event.input_tokens,
+            event.event.cached_input_tokens,
+            event.event.output_tokens,
+            event.event.reasoning_output_tokens,
+            event.event.total_tokens,
         );
         if let Some(index) = indexes.get(&key).copied() {
             let retained = &mut deduped[index];
-            retained.service_tier =
-                merge_codex_service_tiers(retained.service_tier, event.service_tier);
+            retained.event.service_tier =
+                merge_codex_service_tiers(retained.event.service_tier, event.event.service_tier);
         } else {
             indexes.insert(key, deduped.len());
             deduped.push(event);
@@ -177,6 +233,18 @@ mod tests {
 
     use ccusage_test_support::fs_fixture;
     use serde_json::json;
+
+    fn dedupe_codex_events(events: &mut Vec<CodexTokenUsageEvent>) {
+        let mut loaded = events
+            .drain(..)
+            .map(|event| CodexLoadedEvent {
+                event,
+                workspace_path: None,
+            })
+            .collect();
+        dedupe_codex_loaded_events(&mut loaded);
+        events.extend(loaded.into_iter().map(|event| event.event));
+    }
 
     use crate::paths::CodexUsageSource;
 
@@ -256,6 +324,25 @@ mod tests {
             Some(crate::CodexServiceTier::Standard)
         );
         assert_eq!(events[3].service_tier, Some(crate::CodexServiceTier::Fast));
+    }
+
+    #[test]
+    fn keeps_session_meta_workspace_outside_the_public_event() {
+        let fixture = fs_fixture!({
+            "session.jsonl": [
+                r#"{"timestamp":"2026-07-22T00:00:00.000Z","type":"session_meta","payload":{"cwd":"/workspace/codex"}}"#,
+                r#"{"timestamp":"2026-07-22T00:00:01.000Z","type":"event_msg","payload":{"type":"token_count","info":{"model":"gpt-5","last_token_usage":{"input_tokens":10,"cached_input_tokens":2,"output_tokens":1,"total_tokens":11}}}}"#,
+            ].join("\n"),
+        });
+
+        let loaded = load_codex_loaded_events_from_directory(fixture.root(), true, true).unwrap();
+
+        assert_eq!(loaded.len(), 1);
+        assert_eq!(
+            loaded[0].workspace_path.as_deref(),
+            Some("/workspace/codex")
+        );
+        assert_eq!(loaded[0].event.model.as_deref(), Some("gpt-5"));
     }
 
     /// Codex emits `thread_settings_applied` without a `service_tier` key for

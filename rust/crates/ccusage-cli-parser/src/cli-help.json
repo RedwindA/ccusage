@@ -229,6 +229,36 @@
 			"description": "Display this version"
 		}
 	],
+	"codex_speed_options": [
+		{
+			"flags": "--speed [speed]",
+			"description": "Cost speed tier: auto uses recorded settings, then Codex config.toml; use standard or fast to override",
+			"default": "auto",
+			"choices": ["auto", "standard", "fast"]
+		}
+	],
+	"dimension_options": [
+		{"flags": "-s, --since <since>", "description": "Filter from date (YYYY-MM-DD or YYYYMMDD)"},
+		{"flags": "-u, --until <until>", "description": "Filter until date (inclusive)"},
+		{"flags": "-j, --json", "description": "Output in JSON format", "default": "false"},
+		{"flags": "-q, --jq <jq>", "description": "Apply a jq filter to JSON output"},
+		{"flags": "-m, --mode [mode]", "description": "Cost calculation mode", "default": "auto", "choices": ["auto", "calculate", "display"]},
+		{"flags": "-d, --debug", "description": "Show pricing mismatch information for debugging", "default": "false"},
+		{"flags": "--debug-samples [debug-samples]", "description": "Number of sample discrepancies to show in debug output", "default": "5"},
+		{"flags": "-o, --order [order]", "description": "Sort by cost", "default": "desc", "choices": ["desc", "asc"]},
+		{"flags": "-b, --breakdown", "description": "Expand workspace rows with per-model details", "default": "false"},
+		{"flags": "-O, --offline", "description": "Use cached pricing data", "default": "false"},
+		{"flags": "--no-offline", "description": "Negatable of -O, --offline"},
+		{"flags": "--compact", "description": "Force compact table layout for narrow terminals", "default": "false"},
+		{"flags": "--single-thread", "description": "Disable parallel file loading", "default": "false"},
+		{"flags": "--no-cost", "description": "Hide cost information in table and JSON output", "default": "false"},
+		{"flags": "--color", "description": "Enable colored output. FORCE_COLOR=1 has the same effect.", "default": "auto"},
+		{"flags": "--no-color", "description": "Disable colored output. NO_COLOR=1 has the same effect.", "default": "auto"},
+		{"flags": "-z, --timezone <timezone>", "description": "Timezone for date filtering (IANA)", "default": "system timezone"},
+		{"flags": "--config <config>", "description": "Path to configuration file", "default": "auto-discovery"},
+		{"flags": "-h, --help", "description": "Display this help message"},
+		{"flags": "-v, --version", "description": "Display this version"}
+	],
 	"daily_options": [
 		{
 			"flags": "-i, --instances",

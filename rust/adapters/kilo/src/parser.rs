@@ -160,6 +160,7 @@ pub(super) fn message_value_to_entry(
         project: Arc::from("kilo"),
         session_id: Arc::from(session_id),
         project_path: Arc::from("Kilo"),
+        workspace_path: Arc::from("unknown"),
         cost,
         extra_total_tokens,
         credits: None,

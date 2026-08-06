@@ -148,6 +148,7 @@ pub fn message_value_to_entry(
         project: Arc::from("opencode"),
         session_id: Arc::from(loaded_session_id),
         project_path: Arc::from("OpenCode"),
+        workspace_path: Arc::from("unknown"),
         cost,
         extra_total_tokens,
         credits: None,

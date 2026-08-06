@@ -3,9 +3,9 @@ use std::collections::{BTreeMap, BTreeSet};
 use serde_json::{Value, json};
 
 use crate::{
-    Align, CodexGroup, CodexModelUsage, CodexServiceTier, CodexUsageBucket, Color, PricingMap,
-    Result, SimpleTable,
-    cli::{AgentReportKind, SharedArgs},
+    Align, CodexGroup, CodexModelUsage, CodexServiceTier, CodexUsageBucket, Color, DimensionRow,
+    ModelBreakdown, PricingMap, Result, SimpleTable,
+    cli::{AgentReportKind, SharedArgs, SortOrder},
     color, format_currency, format_models_multiline, format_number, json_float,
     missing_pricing_model_for_token_total, print_box_title,
     print_missing_pricing_warnings_for_models,
@@ -243,6 +243,70 @@ pub fn codex_model_missing_pricing(
         Some(pricing),
     )
     .is_some()
+}
+
+pub(super) fn dimension_rows_from_groups(
+    groups: &BTreeMap<String, CodexGroup>,
+    pricing: &PricingMap,
+    speed: CodexSpeedPolicy,
+    order: SortOrder,
+) -> Vec<DimensionRow> {
+    let mut rows = groups
+        .iter()
+        .map(|(key, group)| {
+            let mut model_breakdowns = group
+                .models
+                .iter()
+                .map(|(model, usage)| {
+                    let input_tokens =
+                        non_cached_input_tokens(usage.input_tokens, usage.cached_input_tokens);
+                    ModelBreakdown {
+                        model_name: model.clone(),
+                        input_tokens,
+                        output_tokens: usage.output_tokens,
+                        cache_creation_tokens: 0,
+                        cache_read_tokens: usage.cached_input_tokens,
+                        extra_total_tokens: usage.total_tokens.saturating_sub(
+                            input_tokens + usage.cached_input_tokens + usage.output_tokens,
+                        ),
+                        cost: calculate_codex_model_cost(model, usage, pricing, speed),
+                        missing_pricing: codex_model_missing_pricing(model, usage, pricing),
+                    }
+                })
+                .collect::<Vec<_>>();
+            model_breakdowns.sort_by(|a, b| {
+                b.cost
+                    .total_cmp(&a.cost)
+                    .then_with(|| a.model_name.cmp(&b.model_name))
+            });
+            let mut models_used = group.models.keys().cloned().collect::<Vec<_>>();
+            models_used.sort();
+            let input_tokens =
+                non_cached_input_tokens(group.input_tokens, group.cached_input_tokens);
+            DimensionRow {
+                key: key.clone(),
+                input_tokens,
+                output_tokens: group.output_tokens,
+                cache_creation_tokens: 0,
+                cache_read_tokens: group.cached_input_tokens,
+                extra_total_tokens: group
+                    .total_tokens
+                    .saturating_sub(input_tokens + group.cached_input_tokens + group.output_tokens),
+                total_cost: calculate_group_cost(group, pricing, speed),
+                models_used,
+                model_breakdowns,
+            }
+        })
+        .collect::<Vec<_>>();
+    rows.sort_by(|a, b| {
+        let cost = a.total_cost.total_cmp(&b.total_cost);
+        let cost = match order {
+            SortOrder::Asc => cost,
+            SortOrder::Desc => cost.reverse(),
+        };
+        cost.then_with(|| a.key.cmp(&b.key))
+    });
+    rows
 }
 
 pub fn codex_missing_pricing_models(

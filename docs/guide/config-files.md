@@ -198,6 +198,13 @@ Use data source namespaces to set defaults and report overrides. Supported names
 			"daily": {
 				"since": "20260101",
 				"until": "20260131"
+			},
+			"model": {
+				"order": "desc",
+				"speed": "auto"
+			},
+			"workspace": {
+				"breakdown": true
 			}
 		}
 	},
@@ -211,6 +218,10 @@ Use data source namespaces to set defaults and report overrides. Supported names
 	"droid": {
 		"defaults": {
 			"offline": true
+		},
+		"commands": {
+			"model": { "order": "desc" },
+			"workspace": { "breakdown": true }
 		}
 	},
 	"codebuff": {

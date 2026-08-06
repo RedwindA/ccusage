@@ -105,6 +105,7 @@ fn usage_entry_to_loaded(
         project: Arc::from("copilot"),
         session_id: Arc::from(entry.session_id),
         project_path: Arc::from("GitHub Copilot CLI"),
+        workspace_path: Arc::from("unknown"),
         cost,
         extra_total_tokens: entry.reasoning_output_tokens,
         credits: None,

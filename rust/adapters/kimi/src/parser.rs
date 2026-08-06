@@ -358,6 +358,7 @@ pub(super) fn kimi_entry_to_loaded(
         project: Arc::from("kimi"),
         session_id: Arc::from(entry.session_id),
         project_path: Arc::from("Kimi"),
+        workspace_path: Arc::from("unknown"),
         cost,
         extra_total_tokens: entry.extra_total_tokens,
         credits: None,

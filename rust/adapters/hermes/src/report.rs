@@ -102,6 +102,7 @@ mod tests {
             project: Arc::from("hermes"),
             session_id: Arc::from("session-1"),
             project_path: Arc::from("Hermes"),
+            workspace_path: Arc::from("unknown"),
             cost: 0.34,
             credits: None,
             extra_total_tokens: 10,

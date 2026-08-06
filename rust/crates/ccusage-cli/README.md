@@ -19,6 +19,8 @@ renderer, and the help JSON live in `ccusage-cli-parser` instead.
 - `types::CostMode`
 - `types::CostSource`
 - `types::DailyArgs`
+- `types::DimensionReportArgs`
+- `types::DimensionReportKind`
 - `types::NamedPiStore`
 - `types::NoConfig`
 - `types::OPENCODE_AGENT_REPORTS`

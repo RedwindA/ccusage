@@ -79,6 +79,8 @@ pub struct ClaudeCommandsConfig {
     pub session: Option<SharedOptions>,
     pub blocks: Option<BlocksOptions>,
     pub statusline: Option<StatuslineOptions>,
+    pub model: Option<SharedOptions>,
+    pub workspace: Option<SharedOptions>,
 }
 
 #[derive(Debug, Default, Deserialize, JsonSchema)]
@@ -94,6 +96,8 @@ pub struct CodexCommandsConfig {
     pub daily: Option<CodexOptions>,
     pub monthly: Option<CodexOptions>,
     pub session: Option<CodexOptions>,
+    pub model: Option<CodexOptions>,
+    pub workspace: Option<CodexOptions>,
 }
 
 #[derive(Debug, Default, Deserialize, JsonSchema)]
@@ -140,6 +144,8 @@ pub struct DroidCommandsConfig {
     pub daily: Option<SharedOptions>,
     pub monthly: Option<SharedOptions>,
     pub session: Option<SharedOptions>,
+    pub model: Option<SharedOptions>,
+    pub workspace: Option<SharedOptions>,
 }
 
 #[derive(Debug, Default, Deserialize, JsonSchema)]
@@ -724,10 +730,31 @@ pub fn generate_config_schema_json() -> String {
     enrich_schema(&mut schema);
     add_schema_defaults(&mut schema);
     inline_schema_references(&mut schema);
+    set_dimension_report_order_defaults(&mut schema);
     wrap_root_schema(&mut schema);
     let mut json = tab_indent_json(&serde_json::to_string_pretty(&schema).unwrap());
     json.push('\n');
     json
+}
+
+fn set_dimension_report_order_defaults(schema: &mut Value) {
+    for agent in ["claude", "codex", "droid"] {
+        for report in ["model", "workspace"] {
+            if let Some(order) = schema
+                .get_mut("properties")
+                .and_then(|root| root.get_mut(agent))
+                .and_then(|agent| agent.get_mut("properties"))
+                .and_then(|agent| agent.get_mut("commands"))
+                .and_then(|commands| commands.get_mut("properties"))
+                .and_then(|commands| commands.get_mut(report))
+                .and_then(|report| report.get_mut("properties"))
+                .and_then(|report| report.get_mut("order"))
+                .and_then(Value::as_object_mut)
+            {
+                order.insert("default".to_string(), json!("desc"));
+            }
+        }
+    }
 }
 
 fn tab_indent_json(json: &str) -> String {
@@ -1064,6 +1091,13 @@ mod tests {
             &["codex", "defaults"],
             &with_keys(&shared, &["speed"]),
         );
+        assert_schema_properties(&schema, &["claude", "commands", "model"], &shared);
+        assert_schema_properties(
+            &schema,
+            &["codex", "commands", "workspace"],
+            &with_keys(&shared, &["speed"]),
+        );
+        assert_schema_properties(&schema, &["droid", "commands", "model"], &shared);
         assert_schema_properties(
             &schema,
             &["pi", "defaults"],
@@ -1311,6 +1345,14 @@ mod tests {
         assert_eq!(
             property_default(&schema, &["defaults", "order"]),
             Some(&json!("asc"))
+        );
+        assert_eq!(
+            property_default(&schema, &["claude", "commands", "model", "order"]),
+            Some(&json!("desc"))
+        );
+        assert_eq!(
+            property_default(&schema, &["codex", "commands", "workspace", "order"]),
+            Some(&json!("desc"))
         );
         assert_eq!(
             property_default(&schema, &["commands", "weekly", "startOfWeek"]),

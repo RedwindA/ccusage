@@ -110,6 +110,7 @@ mod tests {
             project: Arc::from("goose"),
             session_id: Arc::from("session-a"),
             project_path: Arc::from("Goose"),
+            workspace_path: Arc::from("unknown"),
             cost: 0.02,
             credits: None,
             model: Some("claude-sonnet-4-20250514".to_string()),

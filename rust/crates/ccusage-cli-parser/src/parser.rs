@@ -4,8 +4,9 @@ use crate::arg_parser::ArgParser;
 use crate::help::{print_help_and_exit, print_version_and_exit};
 use ccusage_cli::{
     AgentCommandArgs, AgentReportKind, BlocksArgs, CliConfig, CodexSpeed, Command, CostMode,
-    CostSource, DailyArgs, OPENCODE_AGENT_REPORTS, STANDARD_AGENT_REPORTS, SessionArgs, SharedArgs,
-    SortOrder, StatuslineArgs, VisualBurnRate, WeekDay, WeeklyArgs, normalize_date_bound,
+    CostSource, DailyArgs, DimensionReportArgs, DimensionReportKind, OPENCODE_AGENT_REPORTS,
+    STANDARD_AGENT_REPORTS, SessionArgs, SharedArgs, SortOrder, StatuslineArgs, VisualBurnRate,
+    WeekDay, WeeklyArgs, normalize_date_bound,
 };
 
 use crate::Cli;
@@ -89,6 +90,9 @@ impl Cli {
             return Err(message.to_string());
         }
         let mut shared = SharedArgs::with_defaults();
+        if is_dimension_invocation(&parser.args) {
+            shared.order = SortOrder::Desc;
+        }
         config.apply_shared(&mut shared);
         let mut root_all_options = RootAllOptions::default();
         while let Some(arg) = parser.peek() {
@@ -267,13 +271,7 @@ fn parse_command(
         "amp" => {
             parse_basic_agent_command(parser, shared, "amp", STANDARD_AGENT_REPORTS, Command::Amp)
         }
-        "droid" => parse_basic_agent_command(
-            parser,
-            shared,
-            "droid",
-            STANDARD_AGENT_REPORTS,
-            Command::Droid,
-        ),
+        "droid" => parse_droid_command(parser, shared),
         "codebuff" => parse_basic_agent_command(
             parser,
             shared,
@@ -532,7 +530,10 @@ fn parse_claude_command(
     default_session_duration_hours: f64,
 ) -> Result<Command, String> {
     let command = match parser.peek() {
-        Some(command @ ("daily" | "monthly" | "weekly" | "session" | "blocks" | "statusline")) => {
+        Some(
+            command @ ("daily" | "monthly" | "weekly" | "session" | "blocks" | "statusline"
+            | "model" | "workspace"),
+        ) => {
             let command = command.to_string();
             parser.next();
             command
@@ -547,6 +548,9 @@ fn parse_claude_command(
         "monthly" => parse_claude_monthly_command(parser, shared, config),
         "weekly" => parse_claude_weekly_command(parser, shared, config),
         "session" => parse_claude_session_command(parser, shared, config),
+        "model" | "workspace" => Ok(Command::ClaudeDimension(parse_dimension_command(
+            parser, shared, &command,
+        )?)),
         "blocks" | "statusline" => parse_command(
             &command,
             parser,
@@ -578,6 +582,11 @@ fn parse_codex_command(
     mut shared: SharedArgs,
     config: &dyn CliConfig,
 ) -> Result<Command, String> {
+    if matches!(parser.peek(), Some("model" | "workspace")) {
+        let command = parser.next().expect("dimension command is present");
+        let args = parse_dimension_command_with_speed(parser, shared, &command, config)?;
+        return Ok(Command::CodexDimension(args.0, args.1));
+    }
     let kind = parse_agent_report_kind(parser, "codex", STANDARD_AGENT_REPORTS)?;
     let mut codex_speed = CodexSpeed::Auto;
     config.apply_agent_args(&mut codex_speed, None, None);
@@ -599,6 +608,70 @@ fn parse_codex_command(
         open_claw_path: None,
         codex_speed,
     }))
+}
+
+fn parse_droid_command(parser: &mut ArgParser, shared: SharedArgs) -> Result<Command, String> {
+    if matches!(parser.peek(), Some("model" | "workspace")) {
+        let command = parser.next().expect("dimension command is present");
+        return Ok(Command::DroidDimension(parse_dimension_command(
+            parser, shared, &command,
+        )?));
+    }
+    parse_basic_agent_command(
+        parser,
+        shared,
+        "droid",
+        STANDARD_AGENT_REPORTS,
+        Command::Droid,
+    )
+}
+
+fn parse_dimension_command(
+    parser: &mut ArgParser,
+    mut shared: SharedArgs,
+    command: &str,
+) -> Result<DimensionReportArgs, String> {
+    while parser.peek().is_some() {
+        parse_shared_arg(parser, &mut shared)?;
+    }
+    Ok(DimensionReportArgs {
+        shared,
+        kind: parse_dimension_report_kind(command),
+    })
+}
+
+fn parse_dimension_command_with_speed(
+    parser: &mut ArgParser,
+    mut shared: SharedArgs,
+    command: &str,
+    config: &dyn CliConfig,
+) -> Result<(DimensionReportArgs, CodexSpeed), String> {
+    let mut speed = CodexSpeed::Auto;
+    config.apply_agent_args(&mut speed, None, None);
+    while parser.peek().is_some() {
+        if parse_shared_arg_for_command(parser, &mut shared)? {
+            continue;
+        }
+        match parser.next_flag()?.as_str() {
+            "--speed" => speed = parse_codex_speed(&parser.value_for("--speed")?)?,
+            flag => return Err(format!("Unknown codex option '{flag}'")),
+        }
+    }
+    Ok((
+        DimensionReportArgs {
+            shared,
+            kind: parse_dimension_report_kind(command),
+        },
+        speed,
+    ))
+}
+
+fn parse_dimension_report_kind(command: &str) -> DimensionReportKind {
+    match command {
+        "model" => DimensionReportKind::Model,
+        "workspace" => DimensionReportKind::Workspace,
+        _ => unreachable!("dimension command is prevalidated"),
+    }
 }
 
 fn parse_pi_command(
@@ -928,12 +1001,22 @@ fn agent_report_supported(agent: &str, report: &str) -> bool {
     match agent {
         "claude" => matches!(
             report,
-            "daily" | "weekly" | "monthly" | "session" | "blocks" | "statusline"
+            "daily"
+                | "weekly"
+                | "monthly"
+                | "session"
+                | "blocks"
+                | "statusline"
+                | "model"
+                | "workspace"
         ),
-        "codex" => matches!(report, "daily" | "monthly" | "session"),
+        "codex" | "droid" => matches!(
+            report,
+            "daily" | "monthly" | "session" | "model" | "workspace"
+        ),
         "opencode" => matches!(report, "daily" | "weekly" | "monthly" | "session"),
-        "amp" | "droid" | "codebuff" | "hermes" | "pi" | "goose" | "kilo" | "copilot"
-        | "gemini" | "kimi" | "qwen" | "openclaw" => {
+        "amp" | "codebuff" | "hermes" | "pi" | "goose" | "kilo" | "copilot" | "gemini" | "kimi"
+        | "qwen" | "openclaw" => {
             matches!(report, "daily" | "monthly" | "session")
         }
         _ => false,
@@ -1016,6 +1099,10 @@ fn last_option_error(command: Option<&Command>, root_shared: &SharedArgs) -> Opt
         Some(Command::Session(args)) => (&args.shared, false),
         Some(Command::Blocks(args)) => (&args.shared, false),
         Some(Command::Statusline(_)) => (root_shared, false),
+        Some(Command::ClaudeDimension(args) | Command::DroidDimension(args)) => {
+            (&args.shared, false)
+        }
+        Some(Command::CodexDimension(args, _)) => (&args.shared, false),
         Some(
             Command::Codex(args)
             | Command::OpenCode(args)
@@ -1047,6 +1134,16 @@ fn last_option_error(command: Option<&Command>, root_shared: &SharedArgs) -> Opt
         return Some("The --last option cannot be used with --sections.".to_string());
     }
     None
+}
+
+fn is_dimension_invocation(args: &[String]) -> bool {
+    let tokens = command_tokens(args);
+    matches!(
+        tokens.as_slice(),
+        [agent, report, ..]
+            if matches!(agent.as_str(), "claude" | "codex" | "droid")
+                && matches!(report.as_str(), "model" | "workspace")
+    )
 }
 
 fn parse_cost_mode(value: &str) -> Result<CostMode, String> {

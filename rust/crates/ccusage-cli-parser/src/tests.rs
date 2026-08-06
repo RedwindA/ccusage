@@ -190,6 +190,11 @@ fn command_snapshot(command: Option<Command>) -> Value {
             "config": args.config.as_ref().map(|path| path.to_string_lossy().to_string()),
             "debug": args.debug,
         }),
+        Some(Command::ClaudeDimension(args)) => dimension_command_snapshot("claude", args, None),
+        Some(Command::CodexDimension(args, speed)) => {
+            dimension_command_snapshot("codex", args, Some(speed))
+        }
+        Some(Command::DroidDimension(args)) => dimension_command_snapshot("droid", args, None),
         Some(Command::Codex(args)) => agent_command_snapshot("codex", args),
         Some(Command::OpenCode(args)) => agent_command_snapshot("opencode", args),
         Some(Command::Amp(args)) => agent_command_snapshot("amp", args),
@@ -205,6 +210,19 @@ fn command_snapshot(command: Option<Command>) -> Value {
         Some(Command::Qwen(args)) => agent_command_snapshot("qwen", args),
         Some(Command::OpenClaw(args)) => agent_command_snapshot("openclaw", args),
     }
+}
+
+fn dimension_command_snapshot(
+    agent: &str,
+    args: DimensionReportArgs,
+    speed: Option<CodexSpeed>,
+) -> Value {
+    json!({
+        "type": agent,
+        "shared": shared_snapshot(&args.shared),
+        "kind": format!("{:?}", args.kind),
+        "codexSpeed": speed.map(|speed| format!("{speed:?}")),
+    })
 }
 
 fn agent_command_snapshot(agent: &str, args: AgentCommandArgs) -> Value {
@@ -232,6 +250,98 @@ fn parses_root_daily_as_all_agent_report() {
     assert_eq!(args.kind, AgentReportKind::Daily);
     assert!(args.shared.json);
     assert_eq!(args.shared.since.as_deref(), Some("20260102"));
+}
+
+#[test]
+fn parses_focused_model_and_workspace_reports() {
+    let cli = parse(&["ccusage", "claude", "model", "--json"]);
+    let Some(Command::ClaudeDimension(args)) = cli.command else {
+        panic!("expected Claude dimension command");
+    };
+    assert_eq!(args.kind, DimensionReportKind::Model);
+    assert!(args.shared.json);
+    assert_eq!(args.shared.order, SortOrder::Desc);
+
+    let cli = parse(&[
+        "ccusage",
+        "codex",
+        "workspace",
+        "--speed",
+        "fast",
+        "--order",
+        "asc",
+        "--breakdown",
+    ]);
+    let Some(Command::CodexDimension(args, speed)) = cli.command else {
+        panic!("expected Codex dimension command");
+    };
+    assert_eq!(args.kind, DimensionReportKind::Workspace);
+    assert_eq!(args.shared.order, SortOrder::Asc);
+    assert!(args.shared.breakdown);
+    assert_eq!(speed, CodexSpeed::Fast);
+
+    let cli = parse(&["ccusage", "droid", "model"]);
+    let Some(Command::DroidDimension(args)) = cli.command else {
+        panic!("expected Droid dimension command");
+    };
+    assert_eq!(args.kind, DimensionReportKind::Model);
+    assert_eq!(args.shared.order, SortOrder::Desc);
+
+    assert!(matches!(
+        parse(&["ccusage", "claude", "workspace"]).command,
+        Some(Command::ClaudeDimension(DimensionReportArgs {
+            kind: DimensionReportKind::Workspace,
+            ..
+        }))
+    ));
+    assert!(matches!(
+        parse(&["ccusage", "codex", "model"]).command,
+        Some(Command::CodexDimension(
+            DimensionReportArgs {
+                kind: DimensionReportKind::Model,
+                ..
+            },
+            CodexSpeed::Auto
+        ))
+    ));
+    assert!(matches!(
+        parse(&["ccusage", "droid", "workspace"]).command,
+        Some(Command::DroidDimension(DimensionReportArgs {
+            kind: DimensionReportKind::Workspace,
+            ..
+        }))
+    ));
+}
+
+#[test]
+fn dimension_order_uses_config_then_cli_precedence() {
+    let config = TestConfig {
+        shared_order: Some(SortOrder::Asc),
+        ..TestConfig::default()
+    };
+    let cli = parse_with_config(&["ccusage", "claude", "model"], &config);
+    let Some(Command::ClaudeDimension(args)) = cli.command else {
+        panic!("expected Claude dimension command");
+    };
+    assert_eq!(args.shared.order, SortOrder::Asc);
+
+    let cli = parse_with_config(&["ccusage", "claude", "model", "--order", "desc"], &config);
+    let Some(Command::ClaudeDimension(args)) = cli.command else {
+        panic!("expected Claude dimension command");
+    };
+    assert_eq!(args.shared.order, SortOrder::Desc);
+}
+
+#[test]
+fn dimension_reports_reject_last_and_other_agents() {
+    assert_eq!(
+        parse_error(&["ccusage", "claude", "model", "--last", "1"]),
+        "The --last option is only available for the daily, weekly, and monthly reports."
+    );
+    assert_eq!(
+        parse_error(&["ccusage", "opencode", "workspace"]),
+        "The \"workspace\" report is not available for OpenCode usage.\nUse \"ccusage opencode daily\" for OpenCode usage reports."
+    );
 }
 
 #[test]
@@ -670,7 +780,23 @@ fn contextual_agent_help_lists_agent_subcommands() {
     assert!(help.contains("daily       Show usage report grouped by date"));
     assert!(help.contains("statusline  Display compact status line for Claude Code hooks"));
     assert!(help.contains("ccusage claude statusline --help"));
+    assert!(help.contains("model       Show usage aggregated by model"));
+    assert!(help.contains("workspace   Show usage aggregated by workspace"));
     assert!(!help.contains("ccusage claude daily <OPTIONS>"));
+}
+
+#[test]
+fn contextual_dimension_help_documents_cost_order_and_codex_speed() {
+    let help = help_text_for_args(&[
+        "ccusage".to_string(),
+        "codex".to_string(),
+        "workspace".to_string(),
+    ]);
+
+    assert!(help.contains("Sort by cost (default: desc, choices: desc | asc)"));
+    assert!(help.contains("Expand workspace rows with per-model details"));
+    assert!(help.contains("choices: auto | standard | fast"));
+    assert!(!help.contains("--last"));
 }
 
 #[test]
