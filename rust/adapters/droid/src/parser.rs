@@ -415,11 +415,7 @@ fn session_start_cwd(value: &Value) -> Option<String> {
             .filter_map(|key| object.get(key).and_then(Value::as_str))
             .any(|value| {
                 matches!(
-                    value
-                        .to_ascii_lowercase()
-                        .replace('-', "")
-                        .replace('_', "")
-                        .as_str(),
+                    value.to_ascii_lowercase().replace(['-', '_'], "").as_str(),
                     "sessionstart"
                 )
             })
