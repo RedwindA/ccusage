@@ -157,7 +157,8 @@ pub(super) fn visit_codex_session_file(
     sessions_dir: &Path,
     path: &Path,
     replayed_prefix: Option<&[CodexRawUsage]>,
-    mut visit: impl FnMut(CodexTokenUsageEvent) -> Result<()>,
+    include_workspace: bool,
+    mut visit: impl FnMut(CodexTokenUsageEvent, Option<&str>) -> Result<()>,
 ) -> Result<()> {
     let Ok(file) = fs::File::open(path) else {
         return Ok(());
@@ -165,6 +166,9 @@ pub(super) fn visit_codex_session_file(
     let mut reader = BufReader::with_capacity(128 * 1024, file);
     let mut line = Vec::new();
     let session_id = codex_session_id(sessions_dir, path);
+    let workspace_path = include_workspace
+        .then(|| codex_workspace_path(path))
+        .flatten();
     let mut previous_totals: Option<CodexRawUsage> = None;
     let mut current_model: Option<String> = None;
     let mut current_model_is_fallback = false;
@@ -215,7 +219,7 @@ pub(super) fn visit_codex_session_file(
                     }
                     replay = CodexReplayState::Done;
                 }
-                CodexReplayState::Done => return visit(event),
+                CodexReplayState::Done => return visit(event, workspace_path.as_deref()),
             }
         }
     };
@@ -271,6 +275,35 @@ pub(super) fn visit_codex_session_file(
     }
 
     Ok(())
+}
+
+fn codex_workspace_path(path: &Path) -> Option<String> {
+    let file = fs::File::open(path).ok()?;
+    let mut reader = BufReader::new(file);
+    let mut line = Vec::new();
+    loop {
+        line.clear();
+        if reader.read_until(b'\n', &mut line).ok()? == 0 {
+            return None;
+        }
+        if !line
+            .windows(b"session_meta".len())
+            .any(|value| value == b"session_meta")
+        {
+            continue;
+        }
+        let Ok(value) = serde_json::from_slice::<CodexSessionLogEntry<'_>>(&line) else {
+            continue;
+        };
+        if value.entry_type.as_deref() != Some("session_meta") {
+            continue;
+        }
+        return value
+            .payload
+            .and_then(|payload| payload.cwd)
+            .map(Cow::into_owned)
+            .filter(|cwd| !cwd.trim().is_empty());
+    }
 }
 
 fn visit_codex_session_entry(

@@ -50,7 +50,14 @@ fn window_target(cli: &mut Cli) -> Option<(&mut SharedArgs, PeriodUnit, WeekDay)
             | Command::Qwen(args)
             | Command::OpenClaw(args),
         ) => agent_window_target(args),
-        Some(Command::Session(_) | Command::Blocks(_) | Command::Statusline(_)) => None,
+        Some(
+            Command::Session(_)
+            | Command::Blocks(_)
+            | Command::Statusline(_)
+            | Command::ClaudeDimension(_)
+            | Command::CodexDimension(_, _)
+            | Command::DroidDimension(_),
+        ) => None,
     }
 }
 

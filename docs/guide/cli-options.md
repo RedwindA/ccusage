@@ -42,7 +42,7 @@ ccusage monthly --last 3
 
 The count is inclusive of the current period, so `--last 2` on a daily report covers yesterday and today. Weeks start on the same day the report buckets by, which is Monday everywhere except `ccusage claude weekly`, where `--start-of-week` decides.
 
-`--last` works on every daily, weekly, and monthly report, including the per-agent ones such as `ccusage codex daily --last 1`. It is not available on `session`, `blocks`, or `statusline`, which have no calendar period, and it cannot be combined with `--since`, `--until`, or `--sections`.
+`--last` works on every daily, weekly, and monthly report, including the per-agent ones such as `ccusage codex daily --last 1`. It is not available on `session`, `blocks`, `statusline`, `model`, or `workspace`, which have no calendar period, and it cannot be combined with `--since`, `--until`, or `--sections`.
 
 ### Output Format
 
@@ -92,6 +92,13 @@ ccusage daily --order desc
 
 # Oldest first
 ccusage daily --order asc
+```
+
+Model and workspace reports sort by cost descending by default. Existing time reports retain their current default order.
+
+```bash
+ccusage claude model --order asc
+ccusage codex workspace --order desc --breakdown
 ```
 
 ### Offline Mode

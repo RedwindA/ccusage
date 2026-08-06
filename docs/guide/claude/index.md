@@ -16,6 +16,10 @@ ccusage claude monthly
 
 # Claude Code sessions
 ccusage claude session
+
+# Aggregate across time by model or workspace
+ccusage claude model
+ccusage claude workspace --breakdown
 ```
 
 Most users can start with unified reports such as `ccusage daily`. Add the `claude` namespace only when you want to focus the same report shape on Claude Code usage or pass Claude-specific options.
@@ -44,6 +48,8 @@ Claude Code can retain logs for only 30 days by default. To review older Claude 
 | `ccusage claude weekly`  | Aggregate usage by week       | [Weekly Usage](/guide/weekly-reports)   |
 | `ccusage claude monthly` | Aggregate usage by month      | [Monthly Usage](/guide/monthly-reports) |
 | `ccusage claude session` | Group usage by Claude session | [Session Usage](/guide/session-reports) |
+| `ccusage claude model` | Aggregate usage by model | [Model & Workspace](/guide/model-workspace-reports) |
+| `ccusage claude workspace` | Aggregate usage by full recorded cwd | [Model & Workspace](/guide/model-workspace-reports) |
 
 ## Claude Code Features
 

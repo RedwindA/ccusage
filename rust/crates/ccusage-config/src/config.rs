@@ -358,7 +358,14 @@ fn is_agent_command(command: &str) -> bool {
 fn is_report_command(command: &str) -> bool {
     matches!(
         command,
-        "daily" | "monthly" | "weekly" | "session" | "blocks" | "statusline"
+        "daily"
+            | "monthly"
+            | "weekly"
+            | "session"
+            | "blocks"
+            | "statusline"
+            | "model"
+            | "workspace"
     )
 }
 
@@ -906,6 +913,34 @@ mod tests {
         );
 
         assert_eq!(speed, CodexSpeed::Fast);
+
+        let dimension = context(
+            json!({
+                "codex": {
+                    "commands": {
+                        "workspace": {
+                            "order": "asc",
+                            "breakdown": true,
+                            "speed": "standard"
+                        }
+                    }
+                }
+            }),
+            "codex workspace",
+            Some("codex"),
+            "workspace",
+        );
+        let mut shared = SharedArgs {
+            order: SortOrder::Desc,
+            ..SharedArgs::default()
+        };
+        apply_config_to_shared(&mut shared, &dimension);
+        let mut speed = CodexSpeed::Auto;
+        apply_config_to_agent_args(&mut speed, None, None, &dimension);
+
+        assert_eq!(shared.order, SortOrder::Asc);
+        assert!(shared.breakdown);
+        assert_eq!(speed, CodexSpeed::Standard);
 
         let mut speed = CodexSpeed::Auto;
         let mut pi_path = None;

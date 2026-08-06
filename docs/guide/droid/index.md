@@ -4,6 +4,13 @@
 
 ccusage can read local Droid session settings files as one of its supported data sources, using the same daily, monthly, and session report views as the rest of ccusage.
 
+It also provides focused model and workspace reports:
+
+```bash
+ccusage droid model
+ccusage droid workspace --breakdown
+```
+
 ## Focused Views
 
 ::: code-group
@@ -42,6 +49,8 @@ DROID_SESSIONS_DIR="$HOME/.factory/sessions,/backup/factory/sessions" ccusage dr
 | `ccusage droid daily`   | Aggregate usage by date      | [Daily Usage](/guide/daily-reports)     |
 | `ccusage droid monthly` | Aggregate usage by month     | [Monthly Usage](/guide/monthly-reports) |
 | `ccusage droid session` | Group usage by Droid session | [Session Usage](/guide/session-reports) |
+| `ccusage droid model` | Aggregate session snapshots by current model | [Model & Workspace](/guide/model-workspace-reports) |
+| `ccusage droid workspace` | Aggregate usage by session workspace | [Model & Workspace](/guide/model-workspace-reports) |
 
 These views support `--json` for structured output, `--compact` for narrow terminals, and `--offline` for cached pricing data.
 
@@ -50,6 +59,8 @@ These views support `--json` for structured output, `--compact` for narrow termi
 - **Token usage** - Droid settings files provide input, output, cache creation, cache read, and thinking token counts.
 - **Reasoning tokens** - Thinking tokens are included in total tokens and output-side cost estimation.
 - **Pricing** - Costs are calculated from LiteLLM pricing data for the recorded model and provider.
+- **Workspace** - The loader prefers settings `cwd`, then sibling JSONL `session_start.cwd`, then the encoded parent directory.
+- **Model attribution** - Droid stores cumulative session usage with the current model snapshot. Model details are therefore marked `sessionSnapshot`; workspace totals themselves remain exact.
 
 ## Environment Variables
 

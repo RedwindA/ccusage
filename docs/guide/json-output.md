@@ -27,6 +27,16 @@ ccusage daily --json --no-cost
 ccusage blocks --json --no-cost
 ```
 
+Claude Code, Codex, and Droid also provide cross-time dimension output:
+
+```bash
+ccusage claude model --json
+ccusage codex workspace --json
+ccusage droid workspace --json --no-cost
+```
+
+Model output is `{ "models": [...], "totals": {...} }`; workspace output is `{ "workspaces": [...], "totals": {...} }`. Workspace rows always include the full `workspace`, `modelsUsed`, and `modelBreakdowns`, even without `--breakdown`. Droid model objects include `"attribution": "sessionSnapshot"`. See [Model and Workspace Reports](/guide/model-workspace-reports).
+
 This removes cost fields such as `totalCost`, `costUSD`, and nested `cost` values while keeping token, model, date, block, burn-rate, and projection fields.
 
 Unified reports also support JSON-oriented flags for dashboard-style consumers:

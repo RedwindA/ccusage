@@ -11,6 +11,9 @@ pub enum Command {
     Session(SessionArgs),
     Blocks(BlocksArgs),
     Statusline(StatuslineArgs),
+    ClaudeDimension(DimensionReportArgs),
+    CodexDimension(DimensionReportArgs, CodexSpeed),
+    DroidDimension(DimensionReportArgs),
     Codex(AgentCommandArgs),
     OpenCode(AgentCommandArgs),
     Amp(AgentCommandArgs),
@@ -124,6 +127,18 @@ pub struct AgentCommandArgs {
     pub pi_path: Option<String>,
     pub open_claw_path: Option<String>,
     pub codex_speed: CodexSpeed,
+}
+
+#[derive(Clone)]
+pub struct DimensionReportArgs {
+    pub shared: SharedArgs,
+    pub kind: DimensionReportKind,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum DimensionReportKind {
+    Model,
+    Workspace,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]

@@ -18,6 +18,7 @@ use crate::{
     week_start,
 };
 
+use super::loader::CodexLoadedEvent;
 use super::{parser, paths, replay::CodexReplayPlan};
 
 #[derive(Debug, Clone, Hash, PartialEq, Eq)]
@@ -125,6 +126,51 @@ pub(super) fn load_groups_from_directory(
     Ok(groups)
 }
 
+pub(super) fn aggregate_dimension_events(
+    events: &[CodexLoadedEvent],
+    kind: crate::cli::DimensionReportKind,
+    shared: &SharedArgs,
+) -> Result<BTreeMap<String, CodexGroup>> {
+    let timezone = parse_tz(shared.timezone.as_deref()).or_else(|| Some(JiffTimeZone::system()));
+    let mut groups = BTreeMap::<String, CodexGroup>::new();
+    for loaded in events {
+        let event = &loaded.event;
+        let timestamp = parse_ts_timestamp(&event.timestamp).ok_or_else(|| {
+            crate::cli_error(format!("Invalid Codex timestamp: {}", event.timestamp))
+        })?;
+        let date = format_date_tz(timestamp, timezone.as_ref());
+        let date_key = date.replace('-', "");
+        if shared.since.as_ref().is_some_and(|since| &date_key < since)
+            || shared.until.as_ref().is_some_and(|until| &date_key > until)
+        {
+            continue;
+        }
+        let raw_model = event
+            .model
+            .as_deref()
+            .map(str::trim)
+            .filter(|model| !model.is_empty())
+            .unwrap_or("unknown");
+        let model = crate::model_aliases::resolve_model_name(raw_model);
+        let key = match kind {
+            crate::cli::DimensionReportKind::Model => model.to_string(),
+            crate::cli::DimensionReportKind::Workspace => loaded
+                .workspace_path
+                .as_deref()
+                .filter(|workspace| !workspace.trim().is_empty())
+                .unwrap_or("unknown")
+                .to_string(),
+        };
+        accumulate_codex_event_into_group(
+            groups.entry(key).or_default(),
+            event,
+            model.as_ref(),
+            true,
+        );
+    }
+    Ok(groups)
+}
+
 fn aggregate_files_with_dedupe(
     run: &CodexAggregateRun<'_>,
     seen: &CodexDedupeShards,
@@ -199,7 +245,10 @@ fn aggregate_file(
         run.sessions_dir,
         file,
         run.replay_plan.replay_prefix(file),
-        |event| add_event_to_groups(&event, run.kind, timezone, run.shared, seen, groups),
+        false,
+        |event, _workspace| {
+            add_event_to_groups(&event, run.kind, timezone, run.shared, seen, groups)
+        },
     )
 }
 
@@ -232,7 +281,10 @@ fn aggregate_file_local(
         run.sessions_dir,
         file,
         run.replay_plan.replay_prefix(file),
-        |event| add_event_to_groups_local(&event, run.kind, timezone, run.shared, aggregation),
+        false,
+        |event, _workspace| {
+            add_event_to_groups_local(&event, run.kind, timezone, run.shared, aggregation)
+        },
     )
 }
 

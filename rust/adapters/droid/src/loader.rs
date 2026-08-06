@@ -4,7 +4,7 @@ use jiff::tz::TimeZone as JiffTimeZone;
 
 use super::{
     parser::{DroidEntry, calculate_droid_cost, load_settings_file, missing_droid_pricing},
-    paths::discover_settings_files,
+    paths::{discover_settings_files, droid_session_paths},
 };
 use crate::{
     LoadedEntry, PricingMap, Result, UsageEntry, UsageMessage, cli::SharedArgs, debug_log,
@@ -21,13 +21,15 @@ pub fn load_entries(shared: &SharedArgs, pricing: &PricingMap) -> Result<Vec<Loa
 
 fn load_entries_inner(shared: &SharedArgs, pricing: &PricingMap) -> Result<Vec<LoadedEntry>> {
     let tz = parse_tz(shared.timezone.as_deref());
+    let roots = droid_session_paths()?;
     let mut files = discover_settings_files()?;
     files.sort();
     // Read files in parallel, reassembled in the original (sorted) file order so
     // the subsequent stable sort and reverse latest-wins dedup pick the same
     // snapshot per session as the single-threaded read.
     let loaded = read_files_parallel(&files, shared.single_thread, |file| {
-        load_settings_file(file).unwrap_or_else(|error| {
+        let encoded_parent = encoded_parent_workspace(file, &roots);
+        load_settings_file(file, encoded_parent.as_deref()).unwrap_or_else(|error| {
             debug_log(
                 shared,
                 format!(
@@ -49,6 +51,26 @@ fn load_entries_inner(shared: &SharedArgs, pricing: &PricingMap) -> Result<Vec<L
         entries.push(to_loaded_entry(entry, tz.as_ref(), pricing));
     }
     Ok(entries)
+}
+
+fn encoded_parent_workspace(
+    path: &std::path::Path,
+    roots: &[std::path::PathBuf],
+) -> Option<String> {
+    let root = roots
+        .iter()
+        .filter(|root| path.starts_with(root))
+        .max_by_key(|root| root.components().count())?;
+    let parent = path.parent()?;
+    if parent == root {
+        return None;
+    }
+    parent
+        .file_name()
+        .and_then(|name| name.to_str())
+        .map(str::trim)
+        .filter(|name| !name.is_empty())
+        .map(str::to_string)
 }
 
 fn to_loaded_entry(
@@ -78,6 +100,7 @@ fn to_loaded_entry(
         project: Arc::from("droid"),
         session_id: Arc::from(entry.session_id.as_str()),
         project_path: Arc::from("Droid"),
+        workspace_path: Arc::from(entry.workspace_path),
         cost,
         credits: None,
         extra_total_tokens: entry.reasoning_tokens,
@@ -136,6 +159,7 @@ mod tests {
     fn loads_usage_from_droid_settings_files() {
         let fixture = fs_fixture!({
             "session-a.settings.json": r#"{
+                "cwd": "/workspace/settings",
                 "model": "Claude-Sonnet-4-[Anthropic]",
                 "providerLock": "anthropic",
                 "providerLockTimestamp": "2026-05-01T01:02:03.000Z",
@@ -170,6 +194,7 @@ mod tests {
         );
         assert_eq!(entries[0].data.message.usage.cache_read_input_tokens, 10);
         assert_eq!(entries[0].extra_total_tokens, 5);
+        assert_eq!(entries[0].workspace_path.as_ref(), "/workspace/settings");
     }
 
     #[test]
@@ -192,6 +217,33 @@ mod tests {
             entries[0].data.message.model.as_deref(),
             Some("claude-opus-4-5-thinking")
         );
+    }
+
+    #[test]
+    fn loads_workspace_from_session_start_then_encoded_parent() {
+        let fixture = fs_fixture!({
+            "encoded-workspace/session-sidecar.settings.json": r#"{
+                "model": "gpt-5",
+                "providerLockTimestamp": "2026-05-02T01:02:03.000Z",
+                "tokenUsage": {"inputTokens": 10, "outputTokens": 20}
+            }"#,
+            "encoded-workspace/session-sidecar.jsonl": r#"{"type":"session_start","cwd":"/workspace/from-sidecar"}"#,
+            "encoded-fallback/session-parent.settings.json": r#"{
+                "model": "gpt-5",
+                "providerLockTimestamp": "2026-05-03T01:02:03.000Z",
+                "tokenUsage": {"inputTokens": 20, "outputTokens": 30}
+            }"#,
+        });
+        let _cleanup = EnvVarGuard::set(DROID_SESSIONS_DIR_ENV, fixture.root());
+
+        let entries = load_entries(&SharedArgs::default(), &PricingMap::load_embedded()).unwrap();
+        let by_session = entries
+            .iter()
+            .map(|entry| (entry.session_id.as_ref(), entry.workspace_path.as_ref()))
+            .collect::<std::collections::BTreeMap<_, _>>();
+
+        assert_eq!(by_session["session-sidecar"], "/workspace/from-sidecar");
+        assert_eq!(by_session["session-parent"], "encoded-fallback");
     }
 
     #[test]
@@ -250,6 +302,7 @@ mod tests {
             project: Arc::from("droid"),
             session_id: Arc::from("session-a"),
             project_path: Arc::from("Droid"),
+            workspace_path: Arc::from("unknown"),
             cost: 0.0,
             credits: None,
             extra_total_tokens: 5,

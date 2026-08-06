@@ -19,7 +19,7 @@ use serde::Deserialize;
 use crate::{
     LoadedEntry, LoadedFile, PricingMap, Result, Speed, TimestampMs, TokenUsageRaw, UsageEntry,
     UsageSummary, calculate_cost, calculate_cost_for_usage,
-    cli::{CostMode, SharedArgs},
+    cli::{CostMode, DimensionReportArgs, DimensionReportKind, SharedArgs},
     debug_log,
     fast::{FxHashMap, SmallIndexVec, byte_lines, suffix_string},
     format_date_tz, log_level, missing_pricing_model_for_usage, parse_ts_timestamp, parse_tz,
@@ -35,6 +35,29 @@ pub fn load_entries(shared: &SharedArgs, project_filter: Option<&str>) -> Result
     progress::track_usage_load(progress::UsageLoadAgent("Claude"), shared.json, || {
         load_entries_inner(shared, project_filter)
     })
+}
+
+pub fn run_dimension(args: DimensionReportArgs) -> Result<()> {
+    let entries = load_entries(&args.shared, None)?;
+    let rows = summarize_dimensions(&entries, args.kind, &args.shared);
+    if wants_json(&args.shared) {
+        return print_json_or_jq(
+            dimension_report_json(&rows, args.kind, DimensionAttribution::Exact),
+            args.shared.jq.as_deref(),
+            args.shared.no_cost,
+        );
+    }
+    let title = match args.kind {
+        DimensionReportKind::Model => "Claude Code Usage by Model",
+        DimensionReportKind::Workspace => "Claude Code Usage by Workspace",
+    };
+    print_dimension_table(
+        title,
+        &rows,
+        args.kind,
+        &args.shared,
+        DimensionAttribution::Exact,
+    )
 }
 
 pub fn load_daily_summaries(
@@ -258,9 +281,16 @@ fn read_usage_file(
         if has_unsupported_null_field(line) {
             continue;
         }
-        let Ok(data) = serde_json::from_slice::<UsageEntry>(line) else {
+        let Ok(record) = serde_json::from_slice::<ClaudeUsageRecord>(line) else {
             continue;
         };
+        let data = record.usage;
+        let workspace_path: Arc<str> = record
+            .cwd
+            .as_deref()
+            .filter(|cwd| !cwd.trim().is_empty())
+            .map(Arc::from)
+            .unwrap_or_else(|| Arc::clone(&project_path));
         let Some(timestamp) = parse_ts_timestamp(&data.timestamp) else {
             continue;
         };
@@ -295,6 +325,7 @@ fn read_usage_file(
             project: Arc::clone(&project),
             session_id: Arc::clone(&session_id),
             project_path: Arc::clone(&project_path),
+            workspace_path: Arc::clone(&workspace_path),
             cost,
             extra_total_tokens: 0,
             credits: None,
@@ -327,6 +358,7 @@ fn read_usage_file(
                 project: Arc::clone(&project),
                 session_id: Arc::clone(&session_id),
                 project_path: Arc::clone(&project_path),
+                workspace_path: Arc::clone(&workspace_path),
                 cost: calculate_cost_for_usage(
                     Some(&advisor.model),
                     advisor.usage,
@@ -346,6 +378,13 @@ fn read_usage_file(
         loaded_file.entries.extend(advisor_entries);
     }
     loaded_file
+}
+
+#[derive(Debug, Deserialize)]
+struct ClaudeUsageRecord {
+    #[serde(flatten)]
+    usage: UsageEntry,
+    cwd: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -486,7 +525,6 @@ fn is_unsupported_nullable_field(field: &[u8]) -> bool {
     matches!(
         field,
         b"id"
-            | b"cwd"
             | b"model"
             | b"speed"
             | b"costUSD"
@@ -658,7 +696,7 @@ mod tests {
     #[test]
     fn calculates_advisor_cost_with_the_advisor_model() {
         let fixture = fs_fixture!({
-            "projects/project-a/session-a/chat.jsonl": r#"{"timestamp":"2026-05-22T02:34:40.000Z","version":"1.2.3","sessionId":"session-a","message":{"id":"msg-parent","model":"main-model","usage":{"input_tokens":1,"output_tokens":2,"iterations":[{"type":"advisor_message","model":"advisor-model","input_tokens":10,"output_tokens":2,"cache_creation_input_tokens":0,"cache_read_input_tokens":0}]}},"requestId":"req-parent","costUSD":1.23}"#,
+            "projects/project-a/session-a/chat.jsonl": r#"{"timestamp":"2026-05-22T02:34:40.000Z","cwd":"/workspace/full-project","version":"1.2.3","sessionId":"session-a","message":{"id":"msg-parent","model":"main-model","usage":{"input_tokens":1,"output_tokens":2,"iterations":[{"type":"advisor_message","model":"advisor-model","input_tokens":10,"output_tokens":2,"cache_creation_input_tokens":0,"cache_read_input_tokens":0}]}},"requestId":"req-parent","costUSD":1.23}"#,
         });
         let mut pricing = PricingMap::default();
         pricing.load_json(
@@ -685,6 +723,15 @@ mod tests {
         assert_eq!(loaded.entries[0].cost, 1.23);
         assert_eq!(loaded.entries[1].model.as_deref(), Some("advisor-model"));
         assert_eq!(loaded.entries[1].cost, 26.0);
+        assert_eq!(
+            loaded.entries[0].workspace_path.as_ref(),
+            "/workspace/full-project"
+        );
+        assert_eq!(
+            loaded.entries[1].workspace_path.as_ref(),
+            "/workspace/full-project"
+        );
+        assert_eq!(loaded.entries[0].project_path.as_ref(), "project-a");
     }
 
     #[test]
@@ -817,6 +864,7 @@ mod tests {
             project: Arc::from("project-a"),
             session_id: Arc::from("session-a"),
             project_path: Arc::from("project-a"),
+            workspace_path: Arc::from("/workspace/project-a"),
             cost: 0.0,
             extra_total_tokens: 0,
             credits: None,

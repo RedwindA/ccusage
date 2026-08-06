@@ -211,6 +211,7 @@ mod tests {
             project: Arc::from("opencode"),
             session_id: Arc::from(session_id),
             project_path: Arc::from("/workspace/api"),
+            workspace_path: Arc::from("/workspace/api"),
             cost: 0.0,
             extra_total_tokens: 0,
             credits: None,

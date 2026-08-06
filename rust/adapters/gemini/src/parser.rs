@@ -482,6 +482,7 @@ pub(super) fn event_to_loaded(
         project: Arc::from("gemini"),
         session_id: Arc::from(event.session_id),
         project_path: Arc::from("Gemini"),
+        workspace_path: Arc::from("unknown"),
         cost,
         extra_total_tokens,
         credits: None,

@@ -60,6 +60,7 @@ export default defineConfig({
 					items: [
 						{ text: 'All Sources (Default)', link: '/guide/all-reports' },
 						{ text: 'Daily Usage', link: '/guide/daily-reports' },
+						{ text: 'Model & Workspace', link: '/guide/model-workspace-reports' },
 						{ text: 'Weekly Usage', link: '/guide/weekly-reports' },
 						{ text: 'Monthly Usage', link: '/guide/monthly-reports' },
 						{ text: 'Session Usage', link: '/guide/session-reports' },

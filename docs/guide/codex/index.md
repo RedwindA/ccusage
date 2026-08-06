@@ -17,6 +17,10 @@ ccusage codex monthly
 
 # Codex sessions
 ccusage codex session
+
+# Aggregate across time by model or workspace
+ccusage codex model
+ccusage codex workspace --breakdown
 ```
 
 Most users can start with unified reports such as `ccusage daily`. Add the `codex` namespace only when you want to focus the same report shape on Codex usage or pass Codex-specific options such as `--speed`.
@@ -36,8 +40,10 @@ CODEX_HOME="$HOME/.codex,$HOME/.codex-work,$HOME/codex-exec-logs" ccusage codex 
 | `ccusage codex daily`   | Aggregate usage by date      | [Daily Usage](/guide/daily-reports)     |
 | `ccusage codex monthly` | Aggregate usage by month     | [Monthly Usage](/guide/monthly-reports) |
 | `ccusage codex session` | Group usage by Codex session | [Session Usage](/guide/session-reports) |
+| `ccusage codex model` | Aggregate usage by model | [Model & Workspace](/guide/model-workspace-reports) |
+| `ccusage codex workspace` | Aggregate usage by full session cwd | [Model & Workspace](/guide/model-workspace-reports) |
 
-These views support `--json`, `--compact`, `--offline`, and `--speed auto|standard|fast`.
+These views support `--json`, `--compact`, `--offline`, and `--speed auto|standard|fast`. Model and workspace reports read the full cwd from Codex session metadata and preserve the existing replay, fallback-model, long-context, and speed-pricing rules.
 
 ## Monthly Example
 

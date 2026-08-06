@@ -7,6 +7,8 @@ Default data directories:
 
 `CLAUDE_CONFIG_DIR` can specify one path or comma-separated multiple paths. Data from valid directories is combined.
 
+Dimension reports use the top-level `cwd` on each usage record as the workspace key. Missing or empty values fall back to the path-derived project directory without changing the legacy session `projectPath` field.
+
 File shape:
 
 ```text

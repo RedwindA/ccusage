@@ -77,6 +77,7 @@ pub(super) fn row_to_entry(
         project: Arc::from("goose"),
         session_id: Arc::from(id.as_str()),
         project_path: Arc::from("Goose"),
+        workspace_path: Arc::from("unknown"),
         cost,
         credits: None,
         model: Some(model),

@@ -317,6 +317,7 @@ fn openclaw_entry_to_loaded(
         project: Arc::from("openclaw"),
         session_id: Arc::from(entry.session_id),
         project_path: Arc::from("OpenClaw"),
+        workspace_path: Arc::from("unknown"),
         cost,
         extra_total_tokens: entry.total_tokens.saturating_sub(
             entry.input_tokens

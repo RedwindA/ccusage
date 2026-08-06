@@ -10,7 +10,11 @@ mod report;
 mod speed;
 mod types;
 
-use crate::{PricingMap, Result, cli::AgentCommandArgs, log_level, print_json_or_jq, wants_json};
+use crate::{
+    PricingMap, Result,
+    cli::{AgentCommandArgs, DimensionReportArgs, DimensionReportKind},
+    log_level, print_json_or_jq, wants_json,
+};
 
 pub use aggregate::{aggregate_events, filter_events_by_date, load_groups};
 pub use loader::load_codex_events;
@@ -26,7 +30,7 @@ pub use types::{
 };
 pub(crate) use types::{CodexRawUsage, merge_codex_service_tiers};
 
-use report::{print_table_from_groups, report_from_groups};
+use report::{dimension_rows_from_groups, print_table_from_groups, report_from_groups};
 
 use crate::cli::{AgentReportKind, CodexSpeed};
 
@@ -46,6 +50,37 @@ pub fn run(args: AgentCommandArgs) -> Result<()> {
         return print_json_or_jq(output, shared.jq.as_deref(), shared.no_cost);
     }
     print_table_from_groups(&groups, args.kind, &pricing, speed, &shared)
+}
+
+pub fn run_dimension(args: DimensionReportArgs, codex_speed: CodexSpeed) -> Result<()> {
+    let shared = args.shared;
+    let pricing = PricingMap::load_with_overrides(
+        shared.offline,
+        log_level() != Some(0),
+        shared.pricing_overrides.iter(),
+    );
+    let events = loader::load_codex_dimension_events(&shared)?;
+    let groups = aggregate::aggregate_dimension_events(&events, args.kind, &shared)?;
+    let speed = resolve_codex_speed(codex_speed);
+    let rows = dimension_rows_from_groups(&groups, &pricing, speed, shared.order);
+    if wants_json(&shared) {
+        return print_json_or_jq(
+            dimension_report_json(&rows, args.kind, DimensionAttribution::Exact),
+            shared.jq.as_deref(),
+            shared.no_cost,
+        );
+    }
+    let title = match args.kind {
+        DimensionReportKind::Model => "Codex Usage by Model",
+        DimensionReportKind::Workspace => "Codex Usage by Workspace",
+    };
+    print_dimension_table(
+        title,
+        &rows,
+        args.kind,
+        &shared,
+        DimensionAttribution::Exact,
+    )
 }
 
 #[doc(hidden)]

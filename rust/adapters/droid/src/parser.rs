@@ -17,6 +17,7 @@ pub(super) struct DroidEntry {
     provider: String,
     pub(super) usage: TokenUsageRaw,
     pub(super) reasoning_tokens: u64,
+    pub(super) workspace_path: String,
 }
 
 #[derive(Default)]
@@ -28,7 +29,10 @@ pub(super) struct DroidTokenUsage {
     pub(super) thinking_tokens: u64,
 }
 
-pub(super) fn load_settings_file(path: &Path) -> Result<Option<DroidEntry>> {
+pub(super) fn load_settings_file(
+    path: &Path,
+    encoded_parent: Option<&str>,
+) -> Result<Option<DroidEntry>> {
     let content = match fs::read_to_string(path) {
         Ok(content) => content,
         Err(error) if error.kind() == io::ErrorKind::NotFound => return Ok(None),
@@ -47,10 +51,18 @@ pub(super) fn load_settings_file(path: &Path) -> Result<Option<DroidEntry>> {
         return Ok(None);
     };
     let provider = normalize_droid_provider(string_field(settings, "providerLock").as_deref());
-    let model = if let Some(model) = string_field(settings, "model") {
+    let settings_model = string_field(settings, "model");
+    let settings_cwd = workspace_field(settings, "cwd");
+    let sidecar = if settings_model.is_none() || settings_cwd.is_none() {
+        extract_sidecar_metadata(path)?
+    } else {
+        DroidSidecarMetadata::default()
+    };
+    let model = if let Some(model) = settings_model {
         normalize_droid_model_name(&model)
     } else {
-        extract_model_from_sidecar_jsonl(path)?
+        sidecar
+            .model
             .unwrap_or_else(|| default_model_from_provider(&provider).to_string())
     };
     let model = if model.is_empty() {
@@ -72,6 +84,10 @@ pub(super) fn load_settings_file(path: &Path) -> Result<Option<DroidEntry>> {
         .and_then(|name| name.strip_suffix(".settings.json"))
         .unwrap_or("unknown")
         .to_string();
+    let workspace_path = settings_cwd
+        .or(sidecar.cwd)
+        .or_else(|| encoded_parent.map(str::to_string))
+        .unwrap_or_else(|| "unknown".to_string());
     Ok(Some(DroidEntry {
         timestamp,
         timestamp_text,
@@ -87,6 +103,7 @@ pub(super) fn load_settings_file(path: &Path) -> Result<Option<DroidEntry>> {
             cache_creation: None,
         },
         reasoning_tokens: usage.thinking_tokens,
+        workspace_path,
     }))
 }
 
@@ -209,6 +226,11 @@ fn string_field(record: &serde_json::Map<String, Value>, key: &str) -> Option<St
     (!value.is_empty()).then(|| value.to_string())
 }
 
+fn workspace_field(record: &serde_json::Map<String, Value>, key: &str) -> Option<String> {
+    let value = record.get(key)?.as_str()?;
+    (!value.trim().is_empty()).then(|| value.to_string())
+}
+
 pub fn normalize_droid_model_name(model: &str) -> String {
     let raw = model.strip_prefix("custom:").unwrap_or(model);
     let mut without_brackets = String::new();
@@ -294,23 +316,71 @@ fn default_model_from_provider(provider: &str) -> &'static str {
     }
 }
 
-fn extract_model_from_sidecar_jsonl(settings_path: &Path) -> Result<Option<String>> {
+#[derive(Default)]
+struct DroidSidecarMetadata {
+    model: Option<String>,
+    cwd: Option<String>,
+}
+
+fn extract_sidecar_metadata(settings_path: &Path) -> Result<DroidSidecarMetadata> {
     let Some(file_name) = settings_path.file_name().and_then(|name| name.to_str()) else {
-        return Ok(None);
+        return Ok(DroidSidecarMetadata::default());
     };
     let Some(prefix) = file_name.strip_suffix(".settings.json") else {
-        return Ok(None);
+        return Ok(DroidSidecarMetadata::default());
     };
     let sidecar = settings_path.with_file_name(format!("{prefix}.jsonl"));
     let Ok(content) = fs::read_to_string(sidecar) else {
-        return Ok(None);
+        return Ok(DroidSidecarMetadata::default());
     };
+    let mut metadata = DroidSidecarMetadata::default();
     for line in content.lines().take(500) {
-        if let Some(model) = extract_droid_model_from_line(line) {
-            return Ok(Some(model));
+        if metadata.model.is_none() {
+            metadata.model = extract_droid_model_from_line(line);
+        }
+        if metadata.cwd.is_none()
+            && let Ok(value) = serde_json::from_str::<Value>(line)
+        {
+            metadata.cwd = session_start_cwd(&value);
+        }
+        if metadata.model.is_some() && metadata.cwd.is_some() {
+            break;
         }
     }
-    Ok(None)
+    Ok(metadata)
+}
+
+fn session_start_cwd(value: &Value) -> Option<String> {
+    fn is_session_start(value: &Value) -> bool {
+        let Some(object) = value.as_object() else {
+            return false;
+        };
+        ["type", "event", "eventType", "hookEventName"]
+            .into_iter()
+            .filter_map(|key| object.get(key).and_then(Value::as_str))
+            .any(|value| {
+                matches!(
+                    value
+                        .to_ascii_lowercase()
+                        .replace('-', "")
+                        .replace('_', "")
+                        .as_str(),
+                    "sessionstart"
+                )
+            })
+            || ["payload", "data", "session"]
+                .into_iter()
+                .any(|key| object.get(key).is_some_and(is_session_start))
+    }
+    fn cwd_in(value: &Value) -> Option<String> {
+        let object = value.as_object()?;
+        workspace_field(object, "cwd").or_else(|| {
+            ["payload", "data", "session"]
+                .into_iter()
+                .find_map(|key| object.get(key).and_then(cwd_in))
+        })
+    }
+    is_session_start(value).then(|| cwd_in(value)).flatten()
 }
 
 fn extract_droid_model_from_line(line: &str) -> Option<String> {
