@@ -4,6 +4,10 @@ use crate::{Result, collect_files_with_extension};
 
 pub(super) const DROID_SESSIONS_DIR_ENV: &str = "DROID_SESSIONS_DIR";
 
+pub(super) fn factory_settings_path() -> Option<PathBuf> {
+    crate::home::home_dir().map(|home| home.join(".factory").join("settings.json"))
+}
+
 pub(super) fn discover_settings_files() -> Result<Vec<PathBuf>> {
     let mut files = Vec::new();
     for root in droid_session_paths()? {

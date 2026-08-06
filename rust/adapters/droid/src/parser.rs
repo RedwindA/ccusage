@@ -1,4 +1,8 @@
-use std::{collections::HashSet, fs, io, path::Path};
+use std::{
+    collections::{HashMap, HashSet},
+    fs, io,
+    path::Path,
+};
 
 use serde_json::Value;
 
@@ -29,9 +33,50 @@ pub(super) struct DroidTokenUsage {
     pub(super) thinking_tokens: u64,
 }
 
+#[derive(Clone)]
+pub(super) struct DroidCustomModel {
+    model: String,
+    provider: Option<String>,
+}
+
+pub(super) type DroidCustomModels = HashMap<String, DroidCustomModel>;
+
+pub(super) fn load_custom_models(path: &Path) -> Result<DroidCustomModels> {
+    let content = match fs::read_to_string(path) {
+        Ok(content) => content,
+        Err(error) if error.kind() == io::ErrorKind::NotFound => return Ok(HashMap::new()),
+        Err(error) => return Err(error.into()),
+    };
+    let value = serde_json::from_str::<Value>(&content).map_err(|error| {
+        crate::cli_error(format!(
+            "failed to parse Droid settings {}: {error}",
+            path.display()
+        ))
+    })?;
+    let Some(models) = value.get("customModels").and_then(Value::as_array) else {
+        return Ok(HashMap::new());
+    };
+    Ok(models
+        .iter()
+        .filter_map(Value::as_object)
+        .filter_map(|model| {
+            let id = string_field(model, "id")?;
+            let model_name = string_field(model, "model")?;
+            Some((
+                id,
+                DroidCustomModel {
+                    model: model_name,
+                    provider: string_field(model, "provider"),
+                },
+            ))
+        })
+        .collect())
+}
+
 pub(super) fn load_settings_file(
     path: &Path,
     encoded_parent: Option<&str>,
+    custom_models: &DroidCustomModels,
 ) -> Result<Option<DroidEntry>> {
     let content = match fs::read_to_string(path) {
         Ok(content) => content,
@@ -50,15 +95,25 @@ pub(super) fn load_settings_file(
     let Some(usage) = parse_token_usage(settings.get("tokenUsage")) else {
         return Ok(None);
     };
-    let provider = normalize_droid_provider(string_field(settings, "providerLock").as_deref());
+    let mut provider = normalize_droid_provider(string_field(settings, "providerLock").as_deref());
     let settings_model = string_field(settings, "model");
+    let custom_model = settings_model
+        .as_deref()
+        .and_then(|model| custom_models.get(model));
+    if provider == "unknown"
+        && let Some(custom_provider) = custom_model.and_then(|model| model.provider.as_deref())
+    {
+        provider = normalize_droid_provider(Some(custom_provider));
+    }
     let settings_cwd = workspace_field(settings, "cwd");
     let sidecar = if settings_model.is_none() || settings_cwd.is_none() {
         extract_sidecar_metadata(path)?
     } else {
         DroidSidecarMetadata::default()
     };
-    let model = if let Some(model) = settings_model {
+    let model = if let Some(model) = custom_model {
+        normalize_droid_model_name(&model.model)
+    } else if let Some(model) = settings_model {
         normalize_droid_model_name(&model)
     } else {
         sidecar

@@ -16,9 +16,14 @@ Anything that is not specific to this source belongs in `ccusage-core` or
 ## Data source
 
 - `${DROID_SESSIONS_DIR:-~/.factory/sessions}/**/*.json`
+- `~/.factory/settings.json` for BYOK custom model ID resolution
 
 Reads plain files through `ccusage-adapter-common`, which handles walking, size-balanced
 chunking, and ordered parallel reads.
+
+Droid session snapshots identify BYOK models by their `customModels[].id`. The adapter resolves
+those IDs to `customModels[].model` before matching pricing, and uses the custom model's provider
+when the session does not record one.
 
 ## Public surface
 

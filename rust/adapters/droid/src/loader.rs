@@ -3,8 +3,11 @@ use std::{collections::HashSet, sync::Arc};
 use jiff::tz::TimeZone as JiffTimeZone;
 
 use super::{
-    parser::{DroidEntry, calculate_droid_cost, load_settings_file, missing_droid_pricing},
-    paths::{discover_settings_files, droid_session_paths},
+    parser::{
+        DroidCustomModels, DroidEntry, calculate_droid_cost, load_custom_models,
+        load_settings_file, missing_droid_pricing,
+    },
+    paths::{discover_settings_files, droid_session_paths, factory_settings_path},
 };
 use crate::{
     LoadedEntry, PricingMap, Result, UsageEntry, UsageMessage, cli::SharedArgs, debug_log,
@@ -22,6 +25,7 @@ pub fn load_entries(shared: &SharedArgs, pricing: &PricingMap) -> Result<Vec<Loa
 fn load_entries_inner(shared: &SharedArgs, pricing: &PricingMap) -> Result<Vec<LoadedEntry>> {
     let tz = parse_tz(shared.timezone.as_deref());
     let roots = droid_session_paths()?;
+    let custom_models = load_factory_custom_models(shared);
     let mut files = discover_settings_files()?;
     files.sort();
     // Read files in parallel, reassembled in the original (sorted) file order so
@@ -29,16 +33,18 @@ fn load_entries_inner(shared: &SharedArgs, pricing: &PricingMap) -> Result<Vec<L
     // snapshot per session as the single-threaded read.
     let loaded = read_files_parallel(&files, shared.single_thread, |file| {
         let encoded_parent = encoded_parent_workspace(file, &roots);
-        load_settings_file(file, encoded_parent.as_deref()).unwrap_or_else(|error| {
-            debug_log(
-                shared,
-                format!(
-                    "Failed to read Droid settings file {}: {error}",
-                    file.display()
-                ),
-            );
-            None
-        })
+        load_settings_file(file, encoded_parent.as_deref(), &custom_models).unwrap_or_else(
+            |error| {
+                debug_log(
+                    shared,
+                    format!(
+                        "Failed to read Droid settings file {}: {error}",
+                        file.display()
+                    ),
+                );
+                None
+            },
+        )
     });
     let mut parsed: Vec<DroidEntry> = loaded.into_iter().flatten().collect();
     parsed.sort_by_key(|entry| entry.timestamp);
@@ -51,6 +57,22 @@ fn load_entries_inner(shared: &SharedArgs, pricing: &PricingMap) -> Result<Vec<L
         entries.push(to_loaded_entry(entry, tz.as_ref(), pricing));
     }
     Ok(entries)
+}
+
+fn load_factory_custom_models(shared: &SharedArgs) -> DroidCustomModels {
+    let Some(path) = factory_settings_path() else {
+        return DroidCustomModels::new();
+    };
+    load_custom_models(&path).unwrap_or_else(|error| {
+        debug_log(
+            shared,
+            format!(
+                "Failed to read Droid custom models from {}: {error}",
+                path.display()
+            ),
+        );
+        DroidCustomModels::new()
+    })
 }
 
 fn encoded_parent_workspace(
@@ -117,7 +139,7 @@ use super::report::{report_from_rows, summarize_entries};
 
 #[cfg(test)]
 mod tests {
-    use ccusage_test_support::{EnvVarGuard, fs_fixture};
+    use ccusage_test_support::{EnvVarGuard, EnvVarsGuard, fs_fixture};
     use serde_json::json;
 
     use super::super::{
@@ -195,6 +217,40 @@ mod tests {
         assert_eq!(entries[0].data.message.usage.cache_read_input_tokens, 10);
         assert_eq!(entries[0].extra_total_tokens, 5);
         assert_eq!(entries[0].workspace_path.as_ref(), "/workspace/settings");
+    }
+
+    #[test]
+    fn resolves_byok_model_ids_from_factory_settings() {
+        let fixture = fs_fixture!({
+            ".factory/settings.json": r#"{
+                "customModels": [{
+                    "model": "gpt-5.6-sol",
+                    "id": "custom:GPT-5.6-Sol-Plus-0",
+                    "provider": "openai"
+                }]
+            }"#,
+            ".factory/sessions/session-byok.settings.json": r#"{
+                "model": "custom:GPT-5.6-Sol-Plus-0",
+                "providerLockTimestamp": "2026-05-01T01:02:03.000Z",
+                "tokenUsage": {"inputTokens": 1000, "outputTokens": 500}
+            }"#,
+        });
+        let _environment = EnvVarsGuard::set_many([
+            ("HOME", Some(fixture.root().as_os_str().to_owned())),
+            (
+                DROID_SESSIONS_DIR_ENV,
+                Some(fixture.path(".factory/sessions").into_os_string()),
+            ),
+        ]);
+        let shared = SharedArgs::default();
+        let pricing = PricingMap::load_embedded();
+
+        let entries = load_entries(&shared, &pricing).unwrap();
+
+        assert_eq!(entries.len(), 1);
+        assert_eq!(entries[0].model.as_deref(), Some("gpt-5-6-sol"));
+        assert!(entries[0].cost > 0.0);
+        assert_eq!(entries[0].missing_pricing_model, None);
     }
 
     #[test]

@@ -31,15 +31,17 @@ pnpm dlx ccusage droid --help
 
 ## Data Source
 
-The CLI reads Droid settings JSON files from `DROID_SESSIONS_DIR` (defaults to `~/.factory/sessions`). `DROID_SESSIONS_DIR` can be one directory or a comma-separated list of directories.
+The CLI reads Droid session settings JSON files from `DROID_SESSIONS_DIR` (defaults to `~/.factory/sessions`). `DROID_SESSIONS_DIR` can be one directory or a comma-separated list of directories. It also reads `~/.factory/settings.json` to resolve BYOK custom model IDs to their underlying model names for pricing.
 
 ```bash
 DROID_SESSIONS_DIR="$HOME/.factory/sessions,/backup/factory/sessions" ccusage droid session
 ```
 
 ```text
-~/.factory/sessions/
-└── **/*.settings.json
+~/.factory/
+├── settings.json
+└── sessions/
+    └── **/*.settings.json
 ```
 
 ## Report Views
@@ -58,7 +60,7 @@ These views support `--json` for structured output, `--compact` for narrow termi
 
 - **Token usage** - Droid settings files provide input, output, cache creation, cache read, and thinking token counts.
 - **Reasoning tokens** - Thinking tokens are included in total tokens and output-side cost estimation.
-- **Pricing** - Costs are calculated from LiteLLM pricing data for the recorded model and provider.
+- **Pricing** - Costs are calculated from LiteLLM pricing data for the recorded model and provider. For BYOK models, Droid records a generated `customModels[].id` in each session; ccusage resolves it through `~/.factory/settings.json` and prices the corresponding `customModels[].model`.
 - **Workspace** - The loader prefers settings `cwd`, then sibling JSONL `session_start.cwd`, then the encoded parent directory.
 - **Model attribution** - Droid stores cumulative session usage with the current model snapshot. Model details are therefore marked `sessionSnapshot`; workspace totals themselves remain exact.
 
@@ -76,5 +78,5 @@ Ensure the data directory exists at `~/.factory/sessions/` and contains `*.setti
 :::
 
 ::: details Costs showing as $0.00
-If a model is not in LiteLLM's database, the cost will be $0.00. [Open an issue](https://github.com/ccusage/ccusage/issues/new) to request alias support.
+If a model is not in LiteLLM's database, the cost will be $0.00. For a BYOK model, also verify that its session model ID still exists in `~/.factory/settings.json`. [Open an issue](https://github.com/ccusage/ccusage/issues/new) to request alias support.
 :::
