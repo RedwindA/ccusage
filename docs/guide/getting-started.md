@@ -14,23 +14,19 @@ The fastest way to try ccusage is to run it directly without installation:
 ::: code-group
 
 ```bash [bunx (Recommended)]
-bunx ccusage
+bunx @redwind/ccusage
 ```
 
 ```bash [Nix]
-nix run github:ccusage/ccusage -- daily
+nix run github:RedwindA/ccusage -- daily
 ```
 
 ```bash [npx]
-npx ccusage@latest
+npx @redwind/ccusage@latest
 ```
 
 ```bash [pnpm]
-pnpm dlx ccusage
-```
-
-```bash [pkg.pr.new preview]
-bunx -p https://pkg.pr.new/ccusage/ccusage@<pr-number> ccusage --offline
+pnpm dlx @redwind/ccusage
 ```
 
 :::

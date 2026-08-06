@@ -9,15 +9,15 @@ ccusage can read GitHub Copilot CLI OpenTelemetry file exports as one of its sup
 ::: code-group
 
 ```bash [bunx (Recommended)]
-bunx ccusage copilot --help
+bunx @redwind/ccusage copilot --help
 ```
 
 ```bash [npx]
-npx ccusage@latest copilot --help
+npx @redwind/ccusage@latest copilot --help
 ```
 
 ```bash [pnpm]
-pnpm dlx ccusage copilot --help
+pnpm dlx @redwind/ccusage copilot --help
 ```
 
 :::

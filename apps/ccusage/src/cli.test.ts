@@ -13,7 +13,7 @@ void describe(resolveCliRuntime.name, () => {
 			arch: 'arm64',
 			platform: 'darwin',
 			resolvePath: (id) => {
-				assert.equal(id, '@ccusage/ccusage-darwin-arm64/bin/ccusage');
+				assert.equal(id, '@redwind/ccusage-darwin-arm64/bin/ccusage');
 				return '/native/bin/ccusage';
 			},
 		});
@@ -23,10 +23,10 @@ void describe(resolveCliRuntime.name, () => {
 
 	void it('resolves the Windows native package binary with the exe suffix', () => {
 		const actual = resolveNativeBinary({
-			arch: 'arm64',
+			arch: 'x64',
 			platform: 'win32',
 			resolvePath: (id) => {
-				assert.equal(id, '@ccusage/ccusage-win32-arm64/bin/ccusage.exe');
+				assert.equal(id, '@redwind/ccusage-win32-x64/bin/ccusage.exe');
 				return 'C:\\native\\bin\\ccusage.exe';
 			},
 		});
@@ -34,15 +34,28 @@ void describe(resolveCliRuntime.name, () => {
 		assert.equal(actual, 'C:\\native\\bin\\ccusage.exe');
 	});
 
+	for (const [platform, arch] of [
+		['darwin', 'x64'],
+		['linux', 'arm64'],
+		['win32', 'arm64'],
+	] as const) {
+		void it(`does not resolve the unpublished ${platform}-${arch} native package`, () => {
+			const resolvePath = mock.fn<() => string>();
+
+			assert.equal(resolveNativeBinary({ arch, platform, resolvePath }), undefined);
+			assert.equal(resolvePath.mock.callCount(), 0);
+		});
+	}
+
 	void it('prefers the matching native package binary when it is available', () => {
 		assert.deepEqual(
 			resolveCliRuntime({
 				argv: ['daily'],
-				nativeBinaryPath: '/app/node_modules/@ccusage/ccusage-darwin-arm64/bin/ccusage',
+				nativeBinaryPath: '/app/node_modules/@redwind/ccusage-darwin-arm64/bin/ccusage',
 			}),
 			{
 				args: ['daily'],
-				command: '/app/node_modules/@ccusage/ccusage-darwin-arm64/bin/ccusage',
+				command: '/app/node_modules/@redwind/ccusage-darwin-arm64/bin/ccusage',
 			},
 		);
 	});

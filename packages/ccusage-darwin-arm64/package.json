@@ -1,11 +1,11 @@
 {
-	"name": "@ccusage/ccusage-darwin-arm64",
+	"name": "@redwind/ccusage-darwin-arm64",
 	"version": "20.0.19",
 	"description": "Native ccusage binary for macOS arm64",
 	"license": "MIT",
 	"repository": {
 		"type": "git",
-		"url": "git+https://github.com/ccusage/ccusage.git",
+		"url": "git+https://github.com/RedwindA/ccusage.git",
 		"directory": "packages/ccusage-darwin-arm64"
 	},
 	"files": [

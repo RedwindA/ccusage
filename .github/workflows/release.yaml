@@ -19,11 +19,6 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - name: build-linux-arm64
-            os: ubuntu-24.04-arm
-            platform: linux
-            arch: arm64
-            binary: result/bin/ccusage
           - name: build-linux-x64
             os: ubuntu-24.04
             platform: linux
@@ -34,16 +29,6 @@ jobs:
             platform: darwin
             arch: arm64
             binary: result/bin/ccusage
-          - name: build-mac-x64
-            os: macos-26
-            platform: darwin
-            arch: x64
-            binary: result/bin/ccusage
-          - name: build-windows-arm64
-            os: windows-11-arm
-            platform: win32
-            arch: arm64
-            binary: rust/target/release/ccusage.exe
           - name: build-windows-x64
             os: windows-2025
             platform: win32
@@ -74,7 +59,7 @@ jobs:
 
   publish:
     needs: build
-    runs-on: ubuntu-24.04-arm
+    runs-on: ubuntu-24.04
     timeout-minutes: 10
     permissions:
       actions: read
@@ -109,14 +94,13 @@ jobs:
         run: |
           node --input-type=module <<'JS'
           import fs from 'node:fs';
-          import path from 'node:path';
 
           const packageFiles = [
             'package.json',
             'apps/ccusage/package.json',
-            ...fs.readdirSync('packages')
-              .filter((name) => name.startsWith('ccusage-'))
-              .map((name) => path.join('packages', name, 'package.json')),
+            'packages/ccusage-linux-x64/package.json',
+            'packages/ccusage-darwin-arm64/package.json',
+            'packages/ccusage-win32-x64/package.json',
           ];
           const packages = packageFiles.map((file) => [file, JSON.parse(fs.readFileSync(file, 'utf8'))]);
           const versions = new Set(packages.map(([, manifest]) => manifest.version));
@@ -139,7 +123,12 @@ jobs:
           console.log(`Publishing ${version}`);
           JS
       - name: Publish native packages
-        run: pnpm --filter='./packages/ccusage-*' publish --provenance --no-git-checks --access public --tag latest
+        run: |
+          pnpm \
+            --filter='./packages/ccusage-linux-x64' \
+            --filter='./packages/ccusage-darwin-arm64' \
+            --filter='./packages/ccusage-win32-x64' \
+            publish --provenance --no-git-checks --access public --tag latest
       - name: Publish ccusage
         run: pnpm --filter='./apps/ccusage' publish --provenance --no-git-checks --access public --tag latest
       - name: Summarize publication

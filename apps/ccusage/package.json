@@ -1,19 +1,18 @@
 {
-	"name": "ccusage",
+	"name": "@redwind/ccusage",
 	"version": "20.0.19",
-	"description": "Analyze coding (agent) CLI token usage and costs from local data",
-	"homepage": "https://github.com/ccusage/ccusage#readme",
+	"description": "Personal ccusage build with model and workspace reports",
+	"homepage": "https://github.com/RedwindA/ccusage#readme",
 	"bugs": {
-		"url": "https://github.com/ccusage/ccusage/issues"
+		"url": "https://github.com/RedwindA/ccusage/issues"
 	},
 	"license": "MIT",
-	"author": "ryoppippi",
+	"author": "redwind",
 	"repository": {
 		"type": "git",
-		"url": "git+https://github.com/ccusage/ccusage.git",
+		"url": "git+https://github.com/RedwindA/ccusage.git",
 		"directory": "apps/ccusage"
 	},
-	"funding": "https://github.com/sponsors/ryoppippi",
 	"bin": {
 		"ccusage": "./src/cli.js"
 	},
@@ -22,6 +21,9 @@
 		"src/cli.js"
 	],
 	"type": "module",
+	"publishConfig": {
+		"access": "public"
+	},
 	"scripts": {
 		"build": "scripts/ensure-native-binary.nu && publint",
 		"prepack": "pnpm run build"
@@ -30,11 +32,8 @@
 		"@types/node": "catalog:types"
 	},
 	"optionalDependencies": {
-		"@ccusage/ccusage-darwin-arm64": "workspace:*",
-		"@ccusage/ccusage-darwin-x64": "workspace:*",
-		"@ccusage/ccusage-linux-arm64": "workspace:*",
-		"@ccusage/ccusage-linux-x64": "workspace:*",
-		"@ccusage/ccusage-win32-arm64": "workspace:*",
-		"@ccusage/ccusage-win32-x64": "workspace:*"
+		"@redwind/ccusage-darwin-arm64": "workspace:*",
+		"@redwind/ccusage-linux-x64": "workspace:*",
+		"@redwind/ccusage-win32-x64": "workspace:*"
 	}
 }

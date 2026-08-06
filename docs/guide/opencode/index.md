@@ -9,15 +9,15 @@ ccusage can read [OpenCode](https://github.com/opencode-ai/opencode) session log
 ::: code-group
 
 ```bash [bunx (Recommended)]
-bunx ccusage opencode --help
+bunx @redwind/ccusage opencode --help
 ```
 
 ```bash [npx]
-npx ccusage@latest opencode --help
+npx @redwind/ccusage@latest opencode --help
 ```
 
 ```bash [pnpm]
-pnpm dlx ccusage opencode --help
+pnpm dlx @redwind/ccusage opencode --help
 ```
 
 ```bash [opencode x]

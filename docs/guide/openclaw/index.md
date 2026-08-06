@@ -10,12 +10,12 @@ OpenClaw is a third-party coding (agent) CLI (previously known as `clawdbot`, `m
 
 ```bash
 # Recommended
-bunx ccusage openclaw --help
+bunx @redwind/ccusage openclaw --help
 
 # Alternative package runners
-npx ccusage@latest openclaw --help
-pnpm dlx ccusage openclaw --help
-pnpx ccusage openclaw --help
+npx @redwind/ccusage@latest openclaw --help
+pnpm dlx @redwind/ccusage openclaw --help
+pnpx @redwind/ccusage openclaw --help
 ```
 
 ## Data Source
@@ -76,10 +76,10 @@ This view shows daily usage from OpenClaw.
 
 ```bash
 # Recommended (fastest)
-bunx ccusage openclaw daily
+bunx @redwind/ccusage openclaw daily
 
 # Using npx
-npx ccusage@latest openclaw daily
+npx @redwind/ccusage@latest openclaw daily
 ```
 
 ### Options

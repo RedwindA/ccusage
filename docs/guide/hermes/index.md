@@ -9,15 +9,15 @@ ccusage can read Hermes Agent session usage from its local SQLite state database
 ::: code-group
 
 ```bash [bunx (Recommended)]
-bunx ccusage hermes --help
+bunx @redwind/ccusage hermes --help
 ```
 
 ```bash [npx]
-npx ccusage@latest hermes --help
+npx @redwind/ccusage@latest hermes --help
 ```
 
 ```bash [pnpm]
-pnpm dlx ccusage hermes --help
+pnpm dlx @redwind/ccusage hermes --help
 ```
 
 :::

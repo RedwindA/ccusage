@@ -17,19 +17,15 @@ The fastest way to use ccusage is to run it directly:
 ::: code-group
 
 ```bash [bunx (Recommended)]
-bunx ccusage
+bunx @redwind/ccusage
 ```
 
 ```bash [pnpm]
-pnpm dlx ccusage
+pnpm dlx @redwind/ccusage
 ```
 
 ```bash [npx]
-npx ccusage@latest
-```
-
-```bash [pkg.pr.new preview]
-bunx -p https://pkg.pr.new/ccusage/ccusage@<pr-number> ccusage --offline
+npx @redwind/ccusage@latest
 ```
 
 :::
@@ -55,19 +51,19 @@ You can install ccusage globally if you prefer a persistent command:
 ::: code-group
 
 ```bash [npm]
-npm install -g ccusage
+npm install -g @redwind/ccusage
 ```
 
 ```bash [bun]
-bun install -g ccusage
+bun install -g @redwind/ccusage
 ```
 
 ```bash [yarn]
-yarn global add ccusage
+yarn global add @redwind/ccusage
 ```
 
 ```bash [pnpm]
-pnpm add -g ccusage
+pnpm add -g @redwind/ccusage
 ```
 
 :::
@@ -86,7 +82,7 @@ For development or contributing to ccusage:
 
 ```bash
 # Clone the repository
-git clone https://github.com/ccusage/ccusage.git
+git clone https://github.com/RedwindA/ccusage.git
 cd ccusage
 
 # Allow direnv to load the Nix dev shell
@@ -112,8 +108,8 @@ just build
 You can also run the package directly from source:
 
 ```bash
-pnpm --filter ccusage start daily
-pnpm --filter ccusage start monthly --json
+pnpm --filter @redwind/ccusage start daily
+pnpm --filter @redwind/ccusage start monthly --json
 ```
 
 ## Runtime Requirements
@@ -127,7 +123,7 @@ pnpm --filter ccusage start monthly --json
 
 - **Minimum**: Bun 1.3+
 - **Recommended**: Latest stable release
-- Recommended for `bunx ccusage` and for the fastest warm startup
+- Recommended for `bunx @redwind/ccusage` and for the fastest warm startup
 
 ## Verification
 
@@ -154,10 +150,10 @@ Always gets the latest version automatically.
 
 ```bash
 # Update with npm
-npm update -g ccusage
+npm update -g @redwind/ccusage
 
 # Update with bun
-bun update -g ccusage
+bun update -g @redwind/ccusage
 ```
 
 ### Check Current Version
@@ -173,19 +169,19 @@ ccusage --version
 ::: code-group
 
 ```bash [npm]
-npm uninstall -g ccusage
+npm uninstall -g @redwind/ccusage
 ```
 
 ```bash [bun]
-bun remove -g ccusage
+bun remove -g @redwind/ccusage
 ```
 
 ```bash [yarn]
-yarn global remove ccusage
+yarn global remove @redwind/ccusage
 ```
 
 ```bash [pnpm]
-pnpm remove -g ccusage
+pnpm remove -g @redwind/ccusage
 ```
 
 :::
@@ -207,7 +203,7 @@ If you get permission errors during global installation:
 
 ```bash [npm]
 # Use npx instead of global install
-npx ccusage@latest
+npx @redwind/ccusage@latest
 
 # Or configure npm to use a different directory
 npm config set prefix ~/.npm-global
@@ -217,11 +213,11 @@ export PATH=~/.npm-global/bin:$PATH
 ```bash [Node Version Managers]
 # Use nvm
 nvm install 22
-npm install -g ccusage
+npm install -g @redwind/ccusage
 
 # Or use fnm
 fnm install 22
-npm install -g ccusage
+npm install -g @redwind/ccusage
 ```
 
 :::
@@ -232,10 +228,10 @@ If installation fails due to network issues:
 
 ```bash
 # Try with different registry
-npm install -g ccusage --registry https://registry.npmjs.org
+npm install -g @redwind/ccusage --registry https://registry.npmjs.org
 
 # Or use bunx for offline-capable runs
-bunx ccusage
+bunx @redwind/ccusage
 ```
 
 ### Version Conflicts
@@ -248,8 +244,8 @@ which ccusage
 ccusage --version
 
 # Uninstall and reinstall
-npm uninstall -g ccusage
-npm install -g ccusage@latest
+npm uninstall -g @redwind/ccusage
+npm install -g @redwind/ccusage@latest
 ```
 
 ## Next Steps

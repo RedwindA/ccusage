@@ -38,7 +38,7 @@ ccusage reads the local usage files that coding CLIs already generate and provid
 
 ### 🚀 Direct Execution
 
-You can run ccusage without a global install using `bunx ccusage` (recommended), `pnpm dlx ccusage`, or `npx ccusage@latest`.
+You can run ccusage without a global install using `bunx @redwind/ccusage` (recommended), `pnpm dlx @redwind/ccusage`, or `npx @redwind/ccusage@latest`.
 
 ### 📊 Usage Views
 

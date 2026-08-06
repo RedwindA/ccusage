@@ -6,12 +6,12 @@ ccusage can read Kilo CLI usage data as one of its supported local data sources.
 
 ```bash
 # Recommended
-bunx ccusage kilo --help
+bunx @redwind/ccusage kilo --help
 
 # Alternative package runners
-npx ccusage@latest kilo --help
-pnpm dlx ccusage kilo --help
-pnpx ccusage kilo --help
+npx @redwind/ccusage@latest kilo --help
+pnpm dlx @redwind/ccusage kilo --help
+pnpx @redwind/ccusage kilo --help
 ```
 
 ## Data Source

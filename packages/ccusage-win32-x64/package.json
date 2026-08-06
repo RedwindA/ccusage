@@ -1,11 +1,11 @@
 {
-	"name": "@ccusage/ccusage-win32-x64",
+	"name": "@redwind/ccusage-win32-x64",
 	"version": "20.0.19",
 	"description": "Native ccusage binary for Windows x64",
 	"license": "MIT",
 	"repository": {
 		"type": "git",
-		"url": "git+https://github.com/ccusage/ccusage.git",
+		"url": "git+https://github.com/RedwindA/ccusage.git",
 		"directory": "packages/ccusage-win32-x64"
 	},
 	"files": [

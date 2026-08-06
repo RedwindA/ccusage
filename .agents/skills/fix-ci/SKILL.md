@@ -14,9 +14,8 @@ description: Diagnoses and fixes failing GitHub Actions checks with gh. Use when
 
    | CI job              | Local command                                                                                              |
    | ------------------- | ---------------------------------------------------------------------------------------------------------- |
-   | `build-linux-*`     | `nix build .#ccusage-static --print-build-logs`                                                         |
+   | `build-linux-x64`   | `nix build .#ccusage-static --print-build-logs`                                                         |
    | `build-mac-arm64`   | `nix build .#ccusage --print-build-logs`                                                                |
-   | `build-mac-x64`     | `nix build .#ccusage-darwin-x64 --print-build-logs`                                                     |
    | `build-windows-x64` | `cargo build --manifest-path rust/Cargo.toml --release --bin ccusage --features fetch-litellm-pricing` |
 
    Start with the narrowest crate build that reproduces the failure before the full recipe above.

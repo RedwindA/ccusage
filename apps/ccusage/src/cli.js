@@ -22,33 +22,16 @@ const require = createRequire(import.meta.url);
  * @returns {string | undefined}
  */
 function getNativePackageName(platform = process.platform, arch = process.arch) {
-	if (platform === 'darwin') {
-		if (arch === 'arm64') {
-			return '@ccusage/ccusage-darwin-arm64';
-		}
-		if (arch === 'x64') {
-			return '@ccusage/ccusage-darwin-x64';
-		}
-		return undefined;
+	if (platform === 'darwin' && arch === 'arm64') {
+		return '@redwind/ccusage-darwin-arm64';
 	}
 
-	if (platform === 'linux') {
-		if (arch === 'arm64') {
-			return '@ccusage/ccusage-linux-arm64';
-		}
-		if (arch === 'x64') {
-			return '@ccusage/ccusage-linux-x64';
-		}
-		return undefined;
+	if (platform === 'linux' && arch === 'x64') {
+		return '@redwind/ccusage-linux-x64';
 	}
 
-	if (platform === 'win32') {
-		if (arch === 'arm64') {
-			return '@ccusage/ccusage-win32-arm64';
-		}
-		if (arch === 'x64') {
-			return '@ccusage/ccusage-win32-x64';
-		}
+	if (platform === 'win32' && arch === 'x64') {
+		return '@redwind/ccusage-win32-x64';
 	}
 
 	return undefined;

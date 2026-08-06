@@ -44,7 +44,7 @@ Add this to your `~/.claude/settings.json` or `~/.config/claude/settings.json`:
 {
 	"statusLine": {
 		"type": "command",
-		"command": "npx -y ccusage statusline",
+		"command": "npx -y @redwind/ccusage statusline",
 		"padding": 0
 	}
 }

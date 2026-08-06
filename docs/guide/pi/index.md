@@ -10,12 +10,12 @@ Pi-agent is a third-party Claude coding (agent) CLI that stores usage data in JS
 
 ```bash
 # Recommended
-bunx ccusage pi --help
+bunx @redwind/ccusage pi --help
 
 # Alternative package runners
-npx ccusage@latest pi --help
-pnpm dlx ccusage pi --help
-pnpx ccusage pi --help
+npx @redwind/ccusage@latest pi --help
+pnpm dlx @redwind/ccusage pi --help
+pnpx @redwind/ccusage pi --help
 ```
 
 ## Data Source
@@ -87,10 +87,10 @@ This view shows daily usage from pi-agent.
 
 ```bash
 # Recommended (fastest)
-bunx ccusage pi daily
+bunx @redwind/ccusage pi daily
 
 # Using npx
-npx ccusage@latest pi daily
+npx @redwind/ccusage@latest pi daily
 ```
 
 ### Options
@@ -172,10 +172,10 @@ This view shows monthly usage from pi-agent.
 
 ```bash
 # Recommended (fastest)
-bunx ccusage pi monthly
+bunx @redwind/ccusage pi monthly
 
 # Using npx
-npx ccusage@latest pi monthly
+npx @redwind/ccusage@latest pi monthly
 ```
 
 ### Options
@@ -257,10 +257,10 @@ This view shows usage grouped by individual pi-agent sessions.
 
 ```bash
 # Recommended (fastest)
-bunx ccusage pi session
+bunx @redwind/ccusage pi session
 
 # Using npx
-npx ccusage@latest pi session
+npx @redwind/ccusage@latest pi session
 ```
 
 ### Options

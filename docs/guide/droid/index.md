@@ -16,15 +16,15 @@ ccusage droid workspace --breakdown
 ::: code-group
 
 ```bash [bunx (Recommended)]
-bunx ccusage droid --help
+bunx @redwind/ccusage droid --help
 ```
 
 ```bash [npx]
-npx ccusage@latest droid --help
+npx @redwind/ccusage@latest droid --help
 ```
 
 ```bash [pnpm]
-pnpm dlx ccusage droid --help
+pnpm dlx @redwind/ccusage droid --help
 ```
 
 :::

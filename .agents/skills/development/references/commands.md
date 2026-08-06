@@ -29,8 +29,8 @@ Narrower package recipes are useful while iterating; finish with the root ones.
 
 ## Releases
 
-Every push to `main` runs `.github/workflows/release.yaml`, builds all native
-packages, and publishes them to npm. The workflow derives a unique prerelease
-version from the next patch version plus the GitHub run ID and attempt, then
-updates the `latest` dist-tag. Publishing requires npm Trusted Publishing to
-authorize this repository and workflow.
+Every push to `main` runs `.github/workflows/release.yaml`, builds the Linux x64,
+macOS arm64, and Windows x64 native packages, and publishes them to npm. The
+workflow derives a unique prerelease version from the next patch version plus
+the GitHub run ID and attempt, then updates the `latest` dist-tag. Publishing
+requires npm Trusted Publishing to authorize this repository and workflow.

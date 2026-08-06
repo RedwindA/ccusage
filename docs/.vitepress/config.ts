@@ -24,7 +24,7 @@ export default defineConfig({
 				content: 'https://cdn.jsdelivr.net/gh/ryoppippi/ccusage@main/docs/public/logo.png',
 			},
 		],
-		['meta', { property: 'og:url', content: 'https://github.com/ryoppippi/ccusage' }],
+		['meta', { property: 'og:url', content: 'https://github.com/RedwindA/ccusage' }],
 	],
 
 	themeConfig: {
@@ -35,11 +35,11 @@ export default defineConfig({
 			{
 				text: 'Links',
 				items: [
-					{ text: 'GitHub', link: 'https://github.com/ryoppippi/ccusage' },
-					{ text: 'npm', link: 'https://www.npmjs.com/package/ccusage' },
-					{ text: 'Changelog', link: 'https://github.com/ryoppippi/ccusage/releases' },
+					{ text: 'GitHub', link: 'https://github.com/RedwindA/ccusage' },
+					{ text: 'npm', link: 'https://www.npmjs.com/package/@redwind/ccusage' },
+					{ text: 'Changelog', link: 'https://github.com/RedwindA/ccusage/releases' },
 					{ text: 'DeepWiki', link: 'https://deepwiki.com/ryoppippi/ccusage' },
-					{ text: 'Package Stats', link: 'https://tanstack.com/ccusage?npmPackage=ccusage' },
+					{ text: 'Package Stats', link: 'https://tanstack.com/ccusage?npmPackage=%40redwind%2Fccusage' },
 					{ text: 'Sponsor', link: 'https://github.com/sponsors/ryoppippi' },
 				],
 			},
@@ -112,8 +112,8 @@ export default defineConfig({
 		},
 
 		socialLinks: [
-			{ icon: 'github', link: 'https://github.com/ryoppippi/ccusage' },
-			{ icon: 'npm', link: 'https://www.npmjs.com/package/ccusage' },
+			{ icon: 'github', link: 'https://github.com/RedwindA/ccusage' },
+			{ icon: 'npm', link: 'https://www.npmjs.com/package/@redwind/ccusage' },
 			{ icon: 'twitter', link: 'https://x.com/cc_usage' },
 		],
 
@@ -151,8 +151,8 @@ export default defineConfig({
 				mode: 'generate',
 				entries: [
 					{ from: '/raycast', to: 'https://www.raycast.com/nyatinte/ccusage', status: 302 },
-					{ from: '/gh', to: 'https://github.com/ryoppippi/ccusage', status: 302 },
-					{ from: '/npm', to: 'https://www.npmjs.com/package/ccusage', status: 302 },
+					{ from: '/gh', to: 'https://github.com/RedwindA/ccusage', status: 302 },
+					{ from: '/npm', to: 'https://www.npmjs.com/package/@redwind/ccusage', status: 302 },
 					{ from: '/deepwiki', to: 'https://deepwiki.com/ryoppippi/ccusage', status: 302 },
 					{ from: '/sponsor', to: 'https://github.com/sponsors/ryoppippi', status: 302 },
 					{ from: '/guide/custom-paths', to: '/guide/claude/', status: 301 },

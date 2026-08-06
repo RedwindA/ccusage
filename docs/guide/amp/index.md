@@ -9,15 +9,15 @@ ccusage can read Amp thread files as one of its supported local data sources, us
 ::: code-group
 
 ```bash [bunx (Recommended)]
-bunx ccusage amp --help
+bunx @redwind/ccusage amp --help
 ```
 
 ```bash [npx]
-npx ccusage@latest amp --help
+npx @redwind/ccusage@latest amp --help
 ```
 
 ```bash [pnpm]
-pnpm dlx ccusage amp --help
+pnpm dlx @redwind/ccusage amp --help
 ```
 
 :::

@@ -9,15 +9,15 @@ ccusage can read Codebuff chat history files as one of its supported local data 
 ::: code-group
 
 ```bash [bunx (Recommended)]
-bunx ccusage codebuff --help
+bunx @redwind/ccusage codebuff --help
 ```
 
 ```bash [npx]
-npx ccusage@latest codebuff --help
+npx @redwind/ccusage@latest codebuff --help
 ```
 
 ```bash [pnpm]
-pnpm dlx ccusage codebuff --help
+pnpm dlx @redwind/ccusage codebuff --help
 ```
 
 :::
