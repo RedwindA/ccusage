@@ -39,6 +39,11 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+      - name: Set unique npm version
+        env:
+          RUN_ID: ${{ github.run_id }}
+          RUN_ATTEMPT: ${{ github.run_attempt }}
+        run: node apps/ccusage/scripts/set-publish-version.js
       - uses: ./.github/actions/build-linux-native-package
         if: matrix.platform == 'linux'
         with:
@@ -91,37 +96,7 @@ jobs:
         env:
           RUN_ID: ${{ github.run_id }}
           RUN_ATTEMPT: ${{ github.run_attempt }}
-        run: |
-          node --input-type=module <<'JS'
-          import fs from 'node:fs';
-
-          const packageFiles = [
-            'package.json',
-            'apps/ccusage/package.json',
-            'packages/ccusage-linux-x64/package.json',
-            'packages/ccusage-darwin-arm64/package.json',
-            'packages/ccusage-win32-x64/package.json',
-          ];
-          const packages = packageFiles.map((file) => [file, JSON.parse(fs.readFileSync(file, 'utf8'))]);
-          const versions = new Set(packages.map(([, manifest]) => manifest.version));
-          if (versions.size !== 1) {
-            throw new Error(`package versions are not synchronized: ${[...versions].join(', ')}`);
-          }
-
-          const checkedInVersion = [...versions][0].split('-', 1)[0];
-          const [major, minor, patch] = checkedInVersion.split('.').map(Number);
-          if (![major, minor, patch].every(Number.isSafeInteger)) {
-            throw new Error(`invalid checked-in version: ${checkedInVersion}`);
-          }
-          const baseVersion = `${major}.${minor}.${patch + 1}`;
-          const version = `${baseVersion}-fork.${process.env.RUN_ID}.${process.env.RUN_ATTEMPT}`;
-          for (const [file, manifest] of packages) {
-            manifest.version = version;
-            fs.writeFileSync(file, `${JSON.stringify(manifest, null, '\t')}\n`);
-          }
-          fs.appendFileSync(process.env.GITHUB_ENV, `NPM_VERSION=${version}\n`);
-          console.log(`Publishing ${version}`);
-          JS
+        run: node apps/ccusage/scripts/set-publish-version.js
       - name: Publish native packages
         run: |
           pnpm \
