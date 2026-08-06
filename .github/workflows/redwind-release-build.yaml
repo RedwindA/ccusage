@@ -1,0 +1,97 @@
+name: Redwind release build
+
+on:
+  workflow_dispatch:
+    inputs:
+      source_ref:
+        description: Git ref containing the source to build
+        required: true
+        default: codex/linux-model-workspace-preview
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  linux-x64:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ inputs.source_ref }}
+          persist-credentials: false
+      - name: Install musl toolchain
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes musl-tools
+          rustup target add x86_64-unknown-linux-musl
+      - name: Build static Linux binary
+        run: cargo build --manifest-path rust/Cargo.toml --release --bin ccusage --features fetch-litellm-pricing --target x86_64-unknown-linux-musl
+      - name: Verify and archive Linux binary
+        run: |
+          binary=rust/target/x86_64-unknown-linux-musl/release/ccusage
+          file "$binary"
+          "$binary" --version
+          mkdir -p dist
+          install -m 755 "$binary" dist/ccusage
+          tar -C dist -czf ccusage-linux-x64.tar.gz ccusage
+          sha256sum ccusage-linux-x64.tar.gz
+      - uses: actions/upload-artifact@043fb46d1a93d77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: ccusage-linux-x64
+          path: ccusage-linux-x64.tar.gz
+          if-no-files-found: error
+
+  darwin-arm64:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ inputs.source_ref }}
+          persist-credentials: false
+      - name: Build macOS arm64 binary
+        run: |
+          test "$(uname -m)" = arm64
+          cargo build --manifest-path rust/Cargo.toml --release --bin ccusage --features fetch-litellm-pricing
+      - name: Verify and archive macOS binary
+        run: |
+          binary=rust/target/release/ccusage
+          file "$binary"
+          otool -L "$binary"
+          "$binary" --version
+          mkdir -p dist
+          install -m 755 "$binary" dist/ccusage
+          tar -C dist -czf ccusage-darwin-arm64.tar.gz ccusage
+          shasum -a 256 ccusage-darwin-arm64.tar.gz
+      - uses: actions/upload-artifact@043fb46d1a93d77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: ccusage-darwin-arm64
+          path: ccusage-darwin-arm64.tar.gz
+          if-no-files-found: error
+
+  win32-x64:
+    runs-on: windows-2025
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ inputs.source_ref }}
+          persist-credentials: false
+      - name: Build Windows x64 binary
+        shell: pwsh
+        run: cargo build --manifest-path rust/Cargo.toml --release --bin ccusage --features fetch-litellm-pricing
+      - name: Verify and archive Windows binary
+        shell: pwsh
+        run: |
+          $binary = 'rust/target/release/ccusage.exe'
+          & $binary --version
+          New-Item -ItemType Directory -Force dist | Out-Null
+          Copy-Item $binary dist/ccusage.exe
+          Compress-Archive -Path dist/ccusage.exe -DestinationPath ccusage-win32-x64.zip
+          Get-FileHash ccusage-win32-x64.zip -Algorithm SHA256
+      - uses: actions/upload-artifact@043fb46d1a93d77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: ccusage-win32-x64
+          path: ccusage-win32-x64.zip
+          if-no-files-found: error
