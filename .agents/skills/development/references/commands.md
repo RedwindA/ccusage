@@ -29,8 +29,8 @@ Narrower package recipes are useful while iterating; finish with the root ones.
 
 ## Releases
 
-Releases are managed by tagpr: merging the auto-generated release PR tags the
-merge commit and triggers the publish workflow. The bump is patch by default;
-label a merged PR `minor` or `major` to raise it.
-
-https://github.com/Songmu/tagpr
+Every push to `main` runs `.github/workflows/release.yaml`, builds all native
+packages, and publishes them to npm. The workflow derives a unique prerelease
+version from the next patch version plus the GitHub run ID and attempt, then
+updates the `latest` dist-tag. Publishing requires npm Trusted Publishing to
+authorize this repository and workflow.

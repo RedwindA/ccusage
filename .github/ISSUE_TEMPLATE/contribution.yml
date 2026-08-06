@@ -7,8 +7,6 @@ body:
       value: |
         **Before you start:** Read [CONTRIBUTING.md](https://github.com/ccusage/ccusage/blob/main/CONTRIBUTING.md).
 
-        PRs from new contributors are auto-closed unless the contributor has already been approved with `lgtm`.
-
         Keep this short, concrete, and written in your own voice.
 
   - type: textarea

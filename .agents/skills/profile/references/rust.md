@@ -45,10 +45,8 @@ affect rendering — before believing a speedup.
 - Parallelism only when it improves end-to-end time on real fixture shapes.
 - Binary size when adding a dependency or feature (`rust-binary-size` skill).
 
-## Reproducing The CI Performance Comment
+## Comparing CLI Performance
 
-`apps/ccusage/scripts/compare-pr-performance.bb --help` lists the options; the
-`compare-pr-performance.bb` step in `.github/workflows/ci.yaml` is the reference
-for a realistic argument set. Locally, point `--base-dir` at the main worktree
-and `--head-dir` at `$PWD`, and cut `--runs`/`--warmup` down to keep iteration
-fast.
+`apps/ccusage/scripts/compare-pr-performance.bb --help` lists the options.
+Point `--base-dir` at the main worktree and `--head-dir` at `$PWD`, and cut
+`--runs`/`--warmup` down to keep iteration fast.

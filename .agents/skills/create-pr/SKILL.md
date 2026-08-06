@@ -12,7 +12,7 @@ A PR is one reviewable responsibility and may hold several atomic commits. A bra
 ## Workflow
 
 1. Branch. Pushing to `main` needs explicit permission from the user; everything else goes through a feature branch named after the change (existing branches read `<type>/<description>`). Commits come from the `commit` skill, so they stay atomic and independently revertable. Leave unrelated formatter churn, generated files, and user edits outside the task unstaged.
-2. Push and open the PR — `references/open-pr.md`. A squash merge writes the PR title as the commit subject on `main`, so CI holds the title to the same Conventional Commit scope rules the `commit` skill describes.
+2. Push and open the PR — `references/open-pr.md`. A squash merge writes the PR title as the commit subject on `main`, so follow the Conventional Commit scope rules the `commit` skill describes.
 3. Request and handle AI review — `references/ai-review.md`, with the `gh` reply and thread-state calls in `references/gh-review.md`.
 4. Watch CI after opening and after every push with `gh pr checks`. Read the failing step logs and annotations rather than the summary, then use the `fix-ci` skill for the fix, and ask the bots for another pass if they do not rerun on their own.
 5. Merge only when the user explicitly asks and the conditions below hold: `gh pr merge <pr> --squash --delete-branch`. Squash is the repository's normal flow.

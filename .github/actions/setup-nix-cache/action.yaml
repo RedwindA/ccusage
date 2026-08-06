@@ -35,9 +35,8 @@ runs:
           access-tokens = github.com=${{ github.token }}
           max-jobs = auto
 
-    # github.workflow is included so workflows that share a job id (e.g.
-    # build-native-packages in both ci.yaml and release.yaml) do not collide on
-    # the same primary-key and block each other from saving updated entries.
+    # github.workflow is included so build and release workflows do not collide
+    # on the same primary-key and block each other from saving updated entries.
     - name: Cache Nix store
       uses: nix-community/cache-nix-action@7df957e333c1e5da7721f60227dbba6d06080569 # v7.0.2
       with:

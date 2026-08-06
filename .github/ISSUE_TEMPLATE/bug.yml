@@ -8,8 +8,6 @@ body:
       value: |
         **Before you start:** Read [CONTRIBUTING.md](https://github.com/ccusage/ccusage/blob/main/CONTRIBUTING.md).
 
-        Issues from new contributors are auto-closed by default. Maintainers review auto-closed issues and reopen worthwhile ones.
-
         Keep this short, concrete, and written in your own voice.
 
   - type: textarea

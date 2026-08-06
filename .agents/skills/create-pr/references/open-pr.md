@@ -9,9 +9,7 @@ Let the pre-push hooks run; fix a failure in a new small commit and push again.
 ## Title
 
 Squash-merge turns the title into the commit subject on `main`, so write it as a
-commit subject. `.github/workflows/check-pr-title.yaml` checks the Conventional
-Commit shape and then re-runs `scripts/validate-commit-scope.nu` against the PR
-diff, so the scope rules from the `commit` skill apply to the title too.
+commit subject and follow the scope rules from the `commit` skill.
 
 ## Body
 

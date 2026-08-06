@@ -1,5 +1,4 @@
-# Nix-built `changelogithub` CLI, run by the release workflow to publish the
-# GitHub release notes for a tag.
+# Nix-built `changelogithub` CLI for manually publishing GitHub release notes.
 #
 # It shells out to git (it resolves the release tag with
 # `git tag --points-at HEAD` and reads the log between tags), so git is wired

@@ -10,21 +10,6 @@ Using AI tools is fine. Submitting generated output that you have not reviewed a
 
 If you use an agent, run it from the repository root so it picks up `CLAUDE.md` and the repo-local skills.
 
-## Contribution Gate
-
-Issues and PRs from new contributors are auto-closed by default.
-
-This gate is based on the contributor approval workflow used by [earendil-works/pi](https://github.com/earendil-works/pi).
-
-Start with an issue before opening a PR. Keep it short, concrete, and written in your own voice.
-
-Maintainers may approve contributors by replying on an issue:
-
-- `lgtmi`: future issues will not be auto-closed
-- `lgtm`: future issues and PRs will not be auto-closed
-
-`lgtmi` does not grant rights to submit PRs. Only `lgtm` grants rights to submit PRs.
-
 ## Quality Bar For Issues
 
 Use one of the GitHub issue templates.
@@ -35,11 +20,9 @@ Use one of the GitHub issue templates.
 - Explain why it matters.
 - If you want to implement the change yourself, say so.
 
-Maintainers may reopen clear, useful issues and approve the author for future issues or PRs.
+Maintainers may close low-signal, unclear, or duplicate issues.
 
 ## Before Submitting a PR
-
-Do not open a PR unless you have already been approved with `lgtm`.
 
 Before submitting a PR, run:
 
@@ -63,14 +46,10 @@ Commits and PR titles follow [Conventional Commits](https://www.conventionalcomm
 belongs to one agent, the scope is that agent's directory name under `rust/adapters/` — `fix(kimi): ...`,
 `feat(codex): ...` — rather than a label invented for the occasion.
 
-A `commit-msg` hook checks this against your staged files, and CI checks the PR title, since a squash merge
-turns that title into the commit that lands on `main`.
+A `commit-msg` hook checks commit subjects against staged files. Follow the same format for PR titles because
+a squash merge turns the title into the commit that lands on `main`.
 
 ## FAQ
-
-### Why are new issues and PRs auto-closed?
-
-ccusage receives agent-assisted reports and changes. Auto-closing gives maintainers a buffer to review issues on their own schedule and reopen the ones that are concrete, reproducible, and worth investigating.
 
 ### Why might an issue get no reply?
 

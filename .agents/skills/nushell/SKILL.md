@@ -21,7 +21,7 @@ Every executable script is a `.nu` file with a Nix shebang and a `def main`; tha
 shebang is how CI gets an interpreter, rather than a `nushell` profile install in
 the workflow. List only the tools the script directly invokes; `--inputs-from` is relative to
 the script's own directory, so its depth differs per directory — copy the header
-from a neighbor, such as `.github/scripts/upsert-pr-comment.nu` or
+from a neighbor, such as `.github/scripts/update-litellm-lock.nu` or
 `apps/ccusage/scripts/stage-native-package.nu`.
 
 Files that exist only to be imported as modules carry no shebang and no `main`:

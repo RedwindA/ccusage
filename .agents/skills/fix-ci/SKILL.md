@@ -10,18 +10,16 @@ description: Diagnoses and fixes failing GitHub Actions checks with gh. Use when
    browser-only inspection is not. Pending checks can usually wait unless the failure is
    already clear.
 
-2. Reproduce locally. CI runs almost everything through Nix, so the failing step maps onto a
-   `just` recipe:
+2. Reproduce the failing platform build locally when the host supports it:
 
-   | CI job / step                                  | Local                                                  |
-   | ---------------------------------------------- | ------------------------------------------------------ |
-   | `preflight`, or `Run nix flake check`          | `just check`                                           |
-   | `Run Rust tests` (`nix build .#ccusage-tests`) | `just rust::test`                                      |
-   | `JS test`                                      | `just test-node`                                       |
-   | `Babashka performance harness test`            | `apps/ccusage/scripts/compare-pr-performance_test.clj` |
+   | CI job              | Local command                                                                                              |
+   | ------------------- | ---------------------------------------------------------------------------------------------------------- |
+   | `build-linux-*`     | `nix build .#ccusage-static --print-build-logs`                                                         |
+   | `build-mac-arm64`   | `nix build .#ccusage --print-build-logs`                                                                |
+   | `build-mac-x64`     | `nix build .#ccusage-darwin-x64 --print-build-logs`                                                     |
+   | `build-windows-x64` | `cargo build --manifest-path rust/Cargo.toml --release --bin ccusage --features fetch-litellm-pricing` |
 
-   Start with the narrowest command that reproduces the failure — a single `cargo test`
-   filter — before the recipe above.
+   Start with the narrowest crate build that reproduces the failure before the full recipe above.
 
 3. Fix the smallest cause that explains the failed check, using the skill for the area being
    changed: `testing`, `development`, `docs`, or the nearest package `AGENTS.md`. When the

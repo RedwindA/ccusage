@@ -6,9 +6,7 @@
 # invented scope on its own — `feat(coding)` reads fine until you know the change
 # was codex — so this reads the ownership off the staged paths instead.
 #
-# The commit-msg hook runs this. A squash merge writes the pull request title
-# instead of these subjects, so the same rules are applied to PR titles by
-# .github/workflows/check-pr-title.yaml; keep the two in step.
+# The commit-msg hook runs this against local commit subjects.
 
 # Scopes accepted whatever the changed paths map to, because they describe a
 # reason for the change rather than a part of the tree.
