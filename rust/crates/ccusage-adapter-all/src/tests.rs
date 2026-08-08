@@ -21,6 +21,7 @@ use ccusage_test_support::{EnvVarsGuard, fs_fixture};
 fn test_agent_rows(agent: &'static str) -> AgentRows {
     AgentRows {
         rows: vec![AllRow {
+            user: None,
             period: "2026-01-02".to_string(),
             agent,
             models_used: Vec::new(),
@@ -36,6 +37,7 @@ fn test_agent_rows(agent: &'static str) -> AgentRows {
             model_breakdowns: Vec::new(),
         }],
         detected: true,
+        warnings: Vec::new(),
     }
 }
 
@@ -78,10 +80,155 @@ fn loads_agent_rows_concurrently() {
 }
 
 #[test]
+fn loads_each_user_with_scoped_home_and_keeps_other_users_after_an_error() {
+    let fixture = ccusage_test_support::Fixture::new();
+    let alice_home = fixture.create_dir_all("alice");
+    let bob_home = fixture.create_dir_all("bob");
+    let users = vec![
+        users::SystemUser::new("alice", alice_home.clone()),
+        users::SystemUser::new("bob", bob_home),
+    ];
+
+    let loaded = load_agent_rows_for_users("codex", &users, &|| {
+        if crate::home::home_dir().as_ref() == Some(&alice_home) {
+            Ok(test_agent_rows("codex"))
+        } else {
+            Err(crate::cli_error("broken database"))
+        }
+    })
+    .unwrap();
+
+    assert_eq!(loaded.rows.len(), 1);
+    assert_eq!(loaded.rows[0].user.as_deref(), Some("alice"));
+    assert!(loaded.detected);
+    assert_eq!(
+        loaded.warnings,
+        vec!["Warning: failed to load codex data for user 'bob': broken database"]
+    );
+    assert!(!crate::home::home_dir_is_overridden());
+}
+
+#[test]
+fn aggregates_same_period_separately_by_user_and_combines_totals() {
+    let mut alice = test_agent_rows("codex").rows.pop().unwrap();
+    alice.user = Some("alice".to_string());
+    let mut bob = test_agent_rows("codex").rows.pop().unwrap();
+    bob.user = Some("bob".to_string());
+    bob.input_tokens = 2;
+    bob.total_tokens = 2;
+
+    let rows = aggregate_rows(vec![alice, bob], AgentReportKind::Daily);
+    let report = report_json_with_agents(&rows, AgentReportKind::Daily, true);
+
+    assert_eq!(rows.len(), 2);
+    assert_eq!(report["daily"][0]["user"], "alice");
+    assert_eq!(report["daily"][1]["user"], "bob");
+    assert_eq!(report["totals"]["totalTokens"], 3);
+    assert!(report["daily"][0]["agents"][0].get("user").is_none());
+}
+
+#[test]
+fn all_users_table_adds_user_column_after_period() {
+    let mut row = test_agent_rows("codex").rows.pop().unwrap();
+    row.user = Some("alice".to_string());
+
+    let (headers, aligns) = all_table_columns_with_users(AgentReportKind::Daily, true, false, true);
+    let cells = all_table_row(&row, true, false, false);
+
+    assert_eq!(
+        headers,
+        vec![
+            "Date",
+            "User",
+            "Agent",
+            "Models",
+            "Input",
+            "Output",
+            "Cost (USD)"
+        ]
+    );
+    assert_eq!(aligns.len(), headers.len());
+    assert_eq!(&cells[..3], &["2026-01-02", "alice", "Codex"]);
+    assert_eq!(cells.len(), headers.len());
+
+    let (full_headers, _) = all_table_columns_with_users(AgentReportKind::Daily, false, true, true);
+    let full_cells = all_table_row(&row, false, false, true);
+    assert_eq!(full_headers[1], "User");
+    assert_eq!(full_cells.len(), full_headers.len());
+}
+
+#[test]
+fn unified_loader_scans_each_users_default_home_and_ignores_root_path_overrides() {
+    let fixture = fs_fixture!({
+        "alice/.codex/sessions/shared-session.jsonl": codex_usage_line(
+            "2099-01-02T08:01:00.000Z",
+            "gpt-5.2",
+            1_000,
+        ),
+        "bob/.codex/sessions/shared-session.jsonl": codex_usage_line(
+            "2099-01-02T08:01:00.000Z",
+            "gpt-5.2",
+            2_000,
+        ),
+        "override/sessions/ignored.jsonl": codex_usage_line(
+            "2099-01-02T08:01:00.000Z",
+            "gpt-5.2",
+            9_000,
+        ),
+    });
+    let _env = isolated_agent_env(
+        &fixture,
+        "CODEX_HOME",
+        fixture.path("override").into_os_string(),
+    );
+    let users = vec![
+        users::SystemUser::new("alice", fixture.path("alice")),
+        users::SystemUser::new("bob", fixture.path("bob")),
+    ];
+    let shared = fixture_shared("20990102", "20990102");
+
+    let result = load_rows_for_users(AgentReportKind::Daily, &shared, &users).unwrap();
+
+    assert!(result.warnings.is_empty(), "{:?}", result.warnings);
+    assert_eq!(
+        result
+            .rows
+            .iter()
+            .map(|row| (row.user.as_deref().unwrap(), row.input_tokens))
+            .collect::<Vec<_>>(),
+        vec![("alice", 900), ("bob", 1_900)]
+    );
+}
+
+#[test]
+fn all_users_warns_once_for_environment_and_configured_custom_sources() {
+    let fixture = ccusage_test_support::Fixture::new();
+    let _env = EnvVarsGuard::set_many([
+        ("CODEX_HOME", Some(fixture.root().as_os_str().into())),
+        ("AMP_DATA_DIR", Some(fixture.root().as_os_str().into())),
+    ]);
+    let shared = SharedArgs {
+        pi_stores: vec![crate::cli::NamedPiStore {
+            name: "omp".to_string(),
+            path: fixture.root().to_string_lossy().into_owned(),
+        }],
+        ..SharedArgs::default()
+    };
+
+    let warning = ignored_custom_source_warning(&shared).unwrap();
+
+    assert_eq!(
+        warning,
+        "Warning: --all-users ignored custom data sources: CODEX_HOME, AMP_DATA_DIR, pi.stores[]"
+    );
+}
+
+#[test]
 fn aggregates_daily_agent_rows_by_period() {
     let rows = aggregate_rows(
         vec![
             AllRow {
+                user: None,
                 period: "2026-01-02".to_string(),
                 agent: "codex",
                 models_used: vec!["gpt-5".to_string()],
@@ -97,6 +244,7 @@ fn aggregates_daily_agent_rows_by_period() {
                 model_breakdowns: Vec::new(),
             },
             AllRow {
+                user: None,
                 period: "2026-01-02".to_string(),
                 agent: "claude",
                 models_used: vec!["claude-sonnet-4-20250514".to_string()],
@@ -139,6 +287,7 @@ fn merges_same_agent_daily_rows_into_one_monthly_breakdown() {
     let rows = aggregate_rows(
         vec![
             AllRow {
+                user: None,
                 period: "2026-01-02".to_string(),
                 agent: "claude",
                 models_used: vec!["claude-sonnet-4-20250514".to_string()],
@@ -162,6 +311,7 @@ fn merges_same_agent_daily_rows_into_one_monthly_breakdown() {
                 }],
             },
             AllRow {
+                user: None,
                 period: "2026-01-15".to_string(),
                 agent: "claude",
                 models_used: vec!["claude-opus-4-20250514".to_string()],
@@ -185,6 +335,7 @@ fn merges_same_agent_daily_rows_into_one_monthly_breakdown() {
                 }],
             },
             AllRow {
+                user: None,
                 period: "2026-01-20".to_string(),
                 agent: "codex",
                 models_used: vec!["gpt-5".to_string()],
@@ -259,6 +410,7 @@ fn merges_same_agent_daily_rows_into_one_monthly_breakdown() {
 #[test]
 fn renders_all_report_json_with_period_and_agent_metadata() {
     let rows = vec![AllRow {
+        user: None,
         period: "2026-01-02".to_string(),
         agent: "all",
         models_used: vec!["gpt-5".to_string()],
@@ -285,6 +437,7 @@ fn renders_all_report_json_with_period_and_agent_metadata() {
 #[test]
 fn renders_by_agent_json_breakdowns_when_requested() {
     let rows = vec![AllRow {
+        user: None,
         period: "2026-01-02".to_string(),
         agent: "all",
         models_used: vec!["claude-sonnet-4-20250514".to_string(), "gpt-5".to_string()],
@@ -298,6 +451,7 @@ fn renders_by_agent_json_breakdowns_when_requested() {
         metadata_agents: Some(vec!["claude", "codex"]),
         agent_breakdowns: Some(vec![
             AllRow {
+                user: None,
                 period: "2026-01-02".to_string(),
                 agent: "claude",
                 models_used: vec!["claude-sonnet-4-20250514".to_string()],
@@ -321,6 +475,7 @@ fn renders_by_agent_json_breakdowns_when_requested() {
                 }],
             },
             AllRow {
+                user: None,
                 period: "2026-01-02".to_string(),
                 agent: "codex",
                 models_used: vec!["gpt-5".to_string()],
@@ -384,6 +539,7 @@ fn renders_by_agent_json_breakdowns_when_requested() {
 fn omits_by_agent_json_breakdowns_by_default() {
     let rows = aggregate_rows(
         vec![AllRow {
+            user: None,
             period: "2026-01-02".to_string(),
             agent: "codex",
             models_used: vec!["gpt-5".to_string()],
@@ -409,6 +565,7 @@ fn omits_by_agent_json_breakdowns_by_default() {
 #[test]
 fn renders_multi_section_json_with_command_totals() {
     let daily_rows = vec![AllRow {
+        user: None,
         period: "2026-01-02".to_string(),
         agent: "all",
         models_used: vec!["gpt-5".to_string()],
@@ -425,6 +582,7 @@ fn renders_multi_section_json_with_command_totals() {
     }];
     let monthly_rows = aggregate_rows(daily_rows.clone(), AgentReportKind::Monthly);
     let session_rows = vec![AllRow {
+        user: None,
         period: "session-a".to_string(),
         agent: "codex",
         models_used: vec!["gpt-5".to_string()],
@@ -728,6 +886,7 @@ fn aggregates_model_breakdowns_across_agents() {
     let rows = aggregate_rows(
         vec![
             AllRow {
+                user: None,
                 period: "2026-01-02".to_string(),
                 agent: "codex",
                 models_used: vec!["gpt-5".to_string()],
@@ -751,6 +910,7 @@ fn aggregates_model_breakdowns_across_agents() {
                 }],
             },
             AllRow {
+                user: None,
                 period: "2026-01-02".to_string(),
                 agent: "claude",
                 models_used: vec!["gpt-5".to_string(), "claude-sonnet-4-20250514".to_string()],
@@ -808,6 +968,7 @@ fn aggregates_model_breakdowns_across_agents() {
 #[test]
 fn displays_total_tokens_with_cache_tokens_like_typescript_table() {
     let row = AllRow {
+        user: None,
         period: "2026-01-02".to_string(),
         agent: "codex",
         models_used: vec!["gpt-5".to_string()],
@@ -831,6 +992,7 @@ fn displays_total_tokens_with_cache_tokens_like_typescript_table() {
 #[test]
 fn report_title_uses_detected_agents_even_when_filtered_rows_are_sparse() {
     let rows = vec![AllRow {
+        user: None,
         period: "2026-01-02".to_string(),
         agent: "all",
         models_used: vec!["gpt-5".to_string()],
@@ -861,6 +1023,7 @@ fn report_title_uses_detected_agents_even_when_filtered_rows_are_sparse() {
 #[test]
 fn all_table_rows_match_main_agent_breakdown_display() {
     let row = AllRow {
+        user: None,
         period: "2026-01-02".to_string(),
         agent: "all",
         models_used: vec!["gpt-5".to_string()],
@@ -873,6 +1036,7 @@ fn all_table_rows_match_main_agent_breakdown_display() {
         metadata: None,
         metadata_agents: Some(vec!["codex"]),
         agent_breakdowns: Some(vec![AllRow {
+            user: None,
             period: "2026-01-02".to_string(),
             agent: "codex",
             models_used: vec!["gpt-5".to_string()],
@@ -908,6 +1072,7 @@ fn all_table_rows_match_main_agent_breakdown_display() {
 #[test]
 fn all_report_title_lists_detected_agents() {
     let row = AllRow {
+        user: None,
         period: "2026-01-02".to_string(),
         agent: "all",
         models_used: Vec::new(),

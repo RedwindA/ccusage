@@ -1,7 +1,4 @@
-use std::{
-    env,
-    path::{Path, PathBuf},
-};
+use std::path::{Path, PathBuf};
 
 use crate::{Result, cli_error, fast::FxHashSet, home};
 
@@ -102,7 +99,7 @@ fn codex_usage_file_key(source: &CodexUsageSource, file: &Path) -> (PathBuf, Pat
 }
 
 pub(super) fn codex_home_paths() -> Result<Vec<PathBuf>> {
-    if let Ok(env_paths) = env::var("CODEX_HOME") {
+    if let Ok(env_paths) = home::data_path_env_var("CODEX_HOME") {
         return Ok(env_paths
             .split(',')
             .map(str::trim)

@@ -32,6 +32,22 @@ ccusage daily --by-agent --json
 
 `--sections` accepts `daily`, `weekly`, `monthly`, and `session`. The invoked report section is always included, and table output prints each requested section as a separate table. `--by-agent` adds an `agents` array to daily, weekly, and monthly JSON rows; session rows are already source-specific.
 
+## Scan All Linux Users
+
+Linux root can scan the default data directories for every account in the system user database:
+
+```bash
+sudo ccusage --all-users
+sudo ccusage monthly --all-users
+sudo ccusage session --all-users --json
+```
+
+Rows are grouped by report period and username, the table gains a **User** column, and JSON rows gain a `user` field. Top-level totals still combine all users. This mode is limited to the default `daily`, `weekly`, `monthly`, and `session` unified reports; focused agent reports and `session --id` do not accept it.
+
+`--all-users` deliberately ignores source-path environment variables such as `CODEX_HOME` and `CLAUDE_CONFIG_DIR`, `XDG_CONFIG_HOME`, and configured `pi.stores[]`, because those paths cannot be assigned reliably to a system account. ccusage warns about ignored custom sources on stderr. Missing default directories are normal; an unreadable or damaged source is reported and skipped without discarding other users' results.
+
+All accounts with an existing home directory are considered, including root and service accounts. Run this option only when you are authorized to inspect every user's local agent history, which may contain sensitive workspace and session metadata.
+
 ## How Unified Views Work
 
 ccusage detects local usage files from Claude Code, Codex, OpenCode, Amp, Droid, Codebuff, Hermes Agent, pi-agent, Goose, OpenClaw, Kilo, Kimi, Qwen, GitHub Copilot CLI, and Gemini CLI. The same daily, weekly, monthly, and session views can run in two modes:

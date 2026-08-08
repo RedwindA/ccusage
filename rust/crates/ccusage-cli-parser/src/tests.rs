@@ -235,6 +235,7 @@ fn agent_command_snapshot(agent: &str, args: AgentCommandArgs) -> Value {
             .map(|section| format!("{section:?}"))
             .collect::<Vec<_>>()),
         "byAgent": args.by_agent,
+        "allUsers": args.all_users,
         "piPath": args.pi_path,
         "openClawPath": args.open_claw_path,
         "codexSpeed": format!("{:?}", args.codex_speed),
@@ -250,6 +251,37 @@ fn parses_root_daily_as_all_agent_report() {
     assert_eq!(args.kind, AgentReportKind::Daily);
     assert!(args.shared.json);
     assert_eq!(args.shared.since.as_deref(), Some("20260102"));
+}
+
+#[test]
+fn parses_all_users_for_unified_reports_before_after_and_without_command() {
+    for args in [
+        vec!["ccusage", "--all-users", "daily"],
+        vec!["ccusage", "monthly", "--all-users"],
+        vec!["ccusage", "--all-users"],
+    ] {
+        let cli = parse(&args);
+        let Some(Command::All(args)) = cli.command else {
+            panic!("expected all-agent command");
+        };
+        assert!(args.all_users);
+    }
+}
+
+#[test]
+fn rejects_all_users_for_non_unified_reports() {
+    assert_eq!(
+        parse_error(&["ccusage", "--all-users", "codex", "daily"]),
+        "Unknown option '--all-users'"
+    );
+    assert_eq!(
+        parse_error(&["ccusage", "codex", "daily", "--all-users"]),
+        "Unknown codex option '--all-users'"
+    );
+    assert_eq!(
+        parse_error(&["ccusage", "blocks", "--all-users"]),
+        "Unknown blocks option '--all-users'"
+    );
 }
 
 #[test]
@@ -544,6 +576,12 @@ fn rejects_sections_and_by_agent_with_top_level_session_id() {
     assert_eq!(
         by_agent_error,
         "The --sections and --by-agent options cannot be used with session --id."
+    );
+
+    let all_users_error = parse_error(&["ccusage", "session", "--id", "abc", "--all-users"]);
+    assert_eq!(
+        all_users_error,
+        "The --all-users option cannot be used with session --id."
     );
 }
 

@@ -24,15 +24,33 @@ use super::{
         AgentLoadSpec, AgentRows, AllAccumulator, AllLoadResult, AllRow, AllSectionsLoadResult,
         LoadedAgentRows,
     },
+    users::SystemUser,
 };
 
 pub(super) fn load_rows(kind: AgentReportKind, shared: &SharedArgs) -> Result<AllLoadResult> {
+    load_rows_with_users(kind, shared, None)
+}
+
+pub(super) fn load_rows_for_users(
+    kind: AgentReportKind,
+    shared: &SharedArgs,
+    users: &[SystemUser],
+) -> Result<AllLoadResult> {
+    load_rows_with_users(kind, shared, Some(users))
+}
+
+fn load_rows_with_users(
+    kind: AgentReportKind,
+    shared: &SharedArgs,
+    users: Option<&[SystemUser]>,
+) -> Result<AllLoadResult> {
     let pricing = load_pricing(shared);
     let load_kind = load_kind_for_report(kind);
-    let loaded = load_base_rows(load_kind, shared, &pricing)?;
+    let loaded = load_base_rows(load_kind, shared, &pricing, users)?;
     Ok(AllLoadResult {
         rows: finish_rows(kind, loaded.rows, shared),
         detected_agents: loaded.detected_agents,
+        warnings: loaded.warnings,
     })
 }
 
@@ -40,12 +58,28 @@ pub(super) fn load_sections(
     kinds: &[AgentReportKind],
     shared: &SharedArgs,
 ) -> Result<AllSectionsLoadResult> {
+    load_sections_with_users(kinds, shared, None)
+}
+
+pub(super) fn load_sections_for_users(
+    kinds: &[AgentReportKind],
+    shared: &SharedArgs,
+    users: &[SystemUser],
+) -> Result<AllSectionsLoadResult> {
+    load_sections_with_users(kinds, shared, Some(users))
+}
+
+fn load_sections_with_users(
+    kinds: &[AgentReportKind],
+    shared: &SharedArgs,
+    users: Option<&[SystemUser]>,
+) -> Result<AllSectionsLoadResult> {
     let pricing = load_pricing(shared);
     let daily_base = needs_daily_family(kinds)
-        .then(|| load_base_rows(AgentReportKind::Daily, shared, &pricing))
+        .then(|| load_base_rows(AgentReportKind::Daily, shared, &pricing, users))
         .transpose()?;
     let session_base = needs_session(kinds)
-        .then(|| load_base_rows(AgentReportKind::Session, shared, &pricing))
+        .then(|| load_base_rows(AgentReportKind::Session, shared, &pricing, users))
         .transpose()?;
 
     let daily_detected_agents = daily_base
@@ -56,6 +90,11 @@ pub(super) fn load_sections(
         .as_ref()
         .map(|base| base.detected_agents.clone())
         .unwrap_or_default();
+    let warnings = daily_base
+        .iter()
+        .chain(session_base.iter())
+        .flat_map(|base| base.warnings.iter().cloned())
+        .collect();
 
     let mut sections = Vec::with_capacity(kinds.len());
     for kind in kinds {
@@ -77,6 +116,7 @@ pub(super) fn load_sections(
         sections,
         daily_detected_agents,
         session_detected_agents,
+        warnings,
     })
 }
 
@@ -101,6 +141,7 @@ fn load_base_rows(
     load_kind: AgentReportKind,
     shared: &SharedArgs,
     pricing: &PricingMap,
+    users: Option<&[SystemUser]>,
 ) -> Result<AllLoadResult> {
     let mut progress = crate::progress::UsageLoadProgress::new(
         crate::log_level() != Some(0)
@@ -310,35 +351,58 @@ fn load_base_rows(
             load: Box::new(|| load_qwen_rows(load_kind, &loader_shared)),
         },
     ];
-    let named_pi_stores = resolve_named_pi_store_paths(&shared.pi_stores)?;
-    for store in named_pi_stores {
-        let agent = leak_agent_name(&store.name);
-        let paths = store.paths;
-        let index = specs.len();
-        let loader_shared_ref = &loader_shared;
-        let pricing_ref = pricing;
-        specs.push(AgentLoadSpec {
-            index,
-            agent,
-            progress_agent: crate::progress::UsageLoadAgent(agent),
-            load: Box::new(move || {
-                load_named_pi_store_rows_from_paths(
+    if users.is_none() {
+        let named_pi_stores = resolve_named_pi_store_paths(&shared.pi_stores)?;
+        for store in named_pi_stores {
+            let agent = leak_agent_name(&store.name);
+            let paths = store.paths;
+            let index = specs.len();
+            let loader_shared_ref = &loader_shared;
+            let pricing_ref = pricing;
+            specs.push(AgentLoadSpec {
+                index,
+                agent,
+                progress_agent: crate::progress::UsageLoadAgent(agent),
+                load: Box::new(move || {
+                    load_named_pi_store_rows_from_paths(
+                        agent,
+                        paths.clone(),
+                        load_kind,
+                        loader_shared_ref,
+                        pricing_ref,
+                    )
+                }),
+            });
+        }
+    }
+    if let Some(users) = users {
+        specs = specs
+            .into_iter()
+            .map(|spec| {
+                let AgentLoadSpec {
+                    index,
                     agent,
-                    paths,
-                    load_kind,
-                    loader_shared_ref,
-                    pricing_ref,
-                )
-            }),
-        });
+                    progress_agent,
+                    load,
+                } = spec;
+                AgentLoadSpec {
+                    index,
+                    agent,
+                    progress_agent,
+                    load: Box::new(move || load_agent_rows_for_users(agent, users, &load)),
+                }
+            })
+            .collect();
     }
     let loaded = load_agent_rows_parallel(specs, &mut progress)?;
     let mut detected_agents = Vec::new();
     let mut rows = Vec::new();
+    let mut warnings = Vec::new();
     for loaded in loaded {
         append_agent_rows(
             &mut rows,
             &mut detected_agents,
+            &mut warnings,
             loaded.agent,
             loaded.agent_rows,
         );
@@ -346,6 +410,39 @@ fn load_base_rows(
     Ok(AllLoadResult {
         rows,
         detected_agents,
+        warnings,
+    })
+}
+
+pub(super) fn load_agent_rows_for_users(
+    agent: &'static str,
+    users: &[SystemUser],
+    load: &dyn Fn() -> Result<AgentRows>,
+) -> Result<AgentRows> {
+    let mut rows = Vec::new();
+    let mut warnings = Vec::new();
+    let mut detected = false;
+    for user in users {
+        let loaded = crate::home::with_home_dir_override(user.home.clone(), load);
+        match loaded {
+            Ok(mut user_rows) => {
+                detected |= user_rows.detected;
+                for row in &mut user_rows.rows {
+                    row.user = Some(user.name.clone());
+                }
+                rows.extend(user_rows.rows);
+                warnings.extend(user_rows.warnings);
+            }
+            Err(error) => warnings.push(format!(
+                "Warning: failed to load {agent} data for user '{}': {error}",
+                user.name
+            )),
+        }
+    }
+    Ok(AgentRows {
+        rows,
+        detected,
+        warnings,
     })
 }
 
@@ -426,12 +523,14 @@ pub(super) fn load_agent_rows_parallel(
 fn append_agent_rows(
     rows: &mut Vec<AllRow>,
     detected_agents: &mut Vec<&'static str>,
+    warnings: &mut Vec<String>,
     agent: &'static str,
     agent_rows: AgentRows,
 ) {
     if agent_rows.detected {
         detected_agents.push(agent);
     }
+    warnings.extend(agent_rows.warnings);
     rows.extend(agent_rows.rows);
 }
 
@@ -510,6 +609,7 @@ fn load_summary_agent_rows(
     Ok(AgentRows {
         rows: summary_rows(agent, summaries, false),
         detected,
+        warnings: Vec::new(),
     })
 }
 
@@ -532,6 +632,7 @@ fn load_pi_format_agent_rows(
     Ok(AgentRows {
         rows: summary_rows(agent, summaries, true),
         detected,
+        warnings: Vec::new(),
     })
 }
 
@@ -571,6 +672,7 @@ fn filtered_pi_format_agent_rows(
     Ok(AgentRows {
         rows: summary_rows(agent, summaries, include_project_path),
         detected,
+        warnings: Vec::new(),
     })
 }
 
@@ -583,6 +685,7 @@ fn load_claude_rows(kind: AgentReportKind, shared: &SharedArgs) -> Result<AgentR
         return Ok(AgentRows {
             rows: summary_rows("claude", summaries, false),
             detected,
+            warnings: Vec::new(),
         });
     }
 
@@ -592,6 +695,7 @@ fn load_claude_rows(kind: AgentReportKind, shared: &SharedArgs) -> Result<AgentR
     Ok(AgentRows {
         rows: summary_rows("claude", summaries, false),
         detected,
+        warnings: Vec::new(),
     })
 }
 
@@ -621,6 +725,7 @@ fn load_codex_rows(
                 .map(|(period, group)| codex_group_row(period, group, pricing, speed))
                 .collect(),
             detected,
+            warnings: Vec::new(),
         });
     }
 
@@ -635,6 +740,7 @@ fn load_codex_rows(
             .map(|(period, group)| codex_group_row(period, group, pricing, speed))
             .collect(),
         detected,
+        warnings: Vec::new(),
     })
 }
 
@@ -664,6 +770,7 @@ fn load_qwen_rows(kind: AgentReportKind, shared: &SharedArgs) -> Result<AgentRow
         return Ok(AgentRows {
             rows: summary_rows("qwen", summaries, false),
             detected,
+            warnings: Vec::new(),
         });
     }
     filter_loaded_entries_by_date(&mut entries, shared);
@@ -671,6 +778,7 @@ fn load_qwen_rows(kind: AgentReportKind, shared: &SharedArgs) -> Result<AgentRow
     Ok(AgentRows {
         rows: summary_rows("qwen", summaries, false),
         detected,
+        warnings: Vec::new(),
     })
 }
 
@@ -732,6 +840,7 @@ fn summary_rows(
             let metadata = summary_metadata(&summary, include_project_path);
             Some(AllRow {
                 period,
+                user: None,
                 agent,
                 models_used: summary.models_used,
                 input_tokens: summary.input_tokens,
@@ -800,6 +909,7 @@ where
     model_breakdowns.sort_by(|a, b| b.cost.total_cmp(&a.cost));
     AllRow {
         period: period.to_string(),
+        user: None,
         agent: "codex",
         models_used: group.models.keys().cloned().collect(),
         input_tokens: codex::non_cached_input_tokens(group.input_tokens, group.cached_input_tokens),
@@ -819,7 +929,7 @@ where
 }
 
 pub(super) fn aggregate_rows(rows: Vec<AllRow>, kind: AgentReportKind) -> Vec<AllRow> {
-    let mut groups = BTreeMap::<String, AllAccumulator>::new();
+    let mut groups = BTreeMap::<(String, Option<String>), AllAccumulator>::new();
     for mut row in rows {
         let period = match kind {
             AgentReportKind::Daily => row.period.clone(),
@@ -832,11 +942,12 @@ pub(super) fn aggregate_rows(rows: Vec<AllRow>, kind: AgentReportKind) -> Vec<Al
             AgentReportKind::Session => row.period.clone(),
         };
         row.period = period.clone();
-        groups.entry(period).or_default().add(row);
+        let user = row.user.clone();
+        groups.entry((period, user)).or_default().add(row);
     }
     groups
         .into_iter()
-        .map(|(period, group)| group.into_row(period))
+        .map(|((period, user), group)| group.into_row(period, user))
         .collect()
 }
 

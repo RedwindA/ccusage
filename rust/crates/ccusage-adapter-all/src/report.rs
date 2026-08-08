@@ -133,6 +133,9 @@ fn row_json(row: &AllRow, include_agents: bool) -> Value {
     let mut value = agent_json(row);
     if let Some(obj) = value.as_object_mut() {
         obj.insert("period".to_string(), json!(row.period));
+        if let Some(user) = row.user.as_ref() {
+            obj.insert("user".to_string(), json!(user));
+        }
     }
     if let (Some(obj), Some(agents)) = (value.as_object_mut(), row.metadata_agents.as_ref()) {
         obj.insert(
@@ -209,7 +212,8 @@ pub(super) fn print_table(
         terminal_width,
         crate::USAGE_COMPACT_WIDTH_THRESHOLD,
     );
-    let (headers, aligns) = all_table_columns(kind, compact, shared.no_cost);
+    let show_users = rows.iter().any(|row| row.user.is_some());
+    let (headers, aligns) = all_table_columns_with_users(kind, compact, shared.no_cost, show_users);
     let mut table = SimpleTable::new(headers, aligns, crate::terminal_style(shared))
         .with_terminal_width(terminal_width)
         .with_date_compaction(true);
@@ -224,12 +228,19 @@ pub(super) fn print_table(
                         &mut table,
                         &breakdown.model_breakdowns,
                         compact,
+                        show_users,
                         shared,
                     );
                 }
             }
         } else if shared.breakdown && !row.model_breakdowns.is_empty() {
-            push_model_breakdown_rows(&mut table, &row.model_breakdowns, compact, shared);
+            push_model_breakdown_rows(
+                &mut table,
+                &row.model_breakdowns,
+                compact,
+                show_users,
+                shared,
+            );
         }
     }
     table.separator();
@@ -261,6 +272,9 @@ pub(super) fn print_table(
                 Color::Yellow,
             ),
         ];
+        if show_users {
+            total_row.insert(1, String::new());
+        }
         if shared.no_cost {
             total_row.pop();
         }
@@ -302,6 +316,9 @@ pub(super) fn print_table(
                 Color::Yellow,
             ),
         ];
+        if show_users {
+            total_row.insert(1, String::new());
+        }
         if shared.no_cost {
             total_row.pop();
         }
@@ -408,6 +425,12 @@ pub(super) fn all_table_row(
     } else {
         format_models_multiline(&row.models_used)
     };
+    let user = if breakdown {
+        String::new()
+    } else {
+        row.user.clone().unwrap_or_default()
+    };
+    let show_user = row.user.is_some();
 
     if compact {
         let mut values = vec![
@@ -418,6 +441,9 @@ pub(super) fn all_table_row(
             format_number(row.output_tokens),
             format_currency(row.total_cost),
         ];
+        if show_user {
+            values.insert(1, user);
+        }
         if no_cost {
             values.pop();
         }
@@ -435,6 +461,9 @@ pub(super) fn all_table_row(
         format_number(table_total_tokens(row)),
         format_currency(row.total_cost),
     ];
+    if show_user {
+        values.insert(1, user);
+    }
     if no_cost {
         values.pop();
     }
@@ -452,6 +481,7 @@ fn push_model_breakdown_rows(
     table: &mut SimpleTable,
     breakdowns: &[ModelBreakdown],
     compact: bool,
+    show_users: bool,
     shared: &SharedArgs,
 ) {
     for b in breakdowns {
@@ -471,6 +501,9 @@ fn push_model_breakdown_rows(
                 color(shared, format_number(b.output_tokens), Color::Grey),
                 color(shared, format_currency(b.cost), Color::Grey),
             ];
+            if show_users {
+                row.insert(1, String::new());
+            }
             if shared.no_cost {
                 row.pop();
             }
@@ -487,6 +520,9 @@ fn push_model_breakdown_rows(
                 color(shared, format_number(total), Color::Grey),
                 color(shared, format_currency(b.cost), Color::Grey),
             ];
+            if show_users {
+                row.insert(1, String::new());
+            }
             if shared.no_cost {
                 row.pop();
             }
@@ -495,10 +531,20 @@ fn push_model_breakdown_rows(
     }
 }
 
+#[cfg(test)]
 pub(super) fn all_table_columns(
     kind: AgentReportKind,
     compact: bool,
     no_cost: bool,
+) -> (Vec<&'static str>, Vec<Align>) {
+    all_table_columns_with_users(kind, compact, no_cost, false)
+}
+
+pub(super) fn all_table_columns_with_users(
+    kind: AgentReportKind,
+    compact: bool,
+    no_cost: bool,
+    show_users: bool,
 ) -> (Vec<&'static str>, Vec<Align>) {
     let (mut headers, mut aligns) = if compact {
         (
@@ -545,6 +591,10 @@ pub(super) fn all_table_columns(
             ],
         )
     };
+    if show_users {
+        headers.insert(1, "User");
+        aligns.insert(1, Align::Left);
+    }
     if no_cost {
         headers.pop();
         aligns.pop();
@@ -553,6 +603,18 @@ pub(super) fn all_table_columns(
 }
 
 pub(super) fn sort_rows(rows: &mut [AllRow], order: &SortOrder) {
+    if rows.iter().any(|row| row.user.is_some()) {
+        rows.sort_by(|a, b| {
+            let period = match order {
+                SortOrder::Asc => a.period.cmp(&b.period),
+                SortOrder::Desc => b.period.cmp(&a.period),
+            };
+            period
+                .then_with(|| a.user.cmp(&b.user))
+                .then_with(|| a.agent.cmp(b.agent))
+        });
+        return;
+    }
     rows.sort_by(|a, b| match a.period.cmp(&b.period) {
         std::cmp::Ordering::Equal => a.agent.cmp(b.agent),
         order => order,

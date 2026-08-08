@@ -1,12 +1,46 @@
-use std::{env, path::PathBuf};
+use std::{cell::RefCell, env, path::PathBuf};
+
+thread_local! {
+    static HOME_DIR_OVERRIDE: RefCell<Option<PathBuf>> = const { RefCell::new(None) };
+}
+
+struct HomeDirOverrideGuard(Option<PathBuf>);
+
+impl Drop for HomeDirOverrideGuard {
+    fn drop(&mut self) {
+        HOME_DIR_OVERRIDE.with(|slot| {
+            slot.replace(self.0.take());
+        });
+    }
+}
 
 pub fn home_dir() -> Option<PathBuf> {
+    if let Some(home) = HOME_DIR_OVERRIDE.with(|slot| slot.borrow().clone()) {
+        return Some(home);
+    }
     home_dir_from_env(
         env::var_os("HOME"),
         env::var_os("USERPROFILE"),
         env::var_os("HOMEDRIVE"),
         env::var_os("HOMEPATH"),
     )
+}
+
+pub fn with_home_dir_override<T>(home: PathBuf, operation: impl FnOnce() -> T) -> T {
+    let previous = HOME_DIR_OVERRIDE.with(|slot| slot.replace(Some(home)));
+    let _guard = HomeDirOverrideGuard(previous);
+    operation()
+}
+
+pub fn home_dir_is_overridden() -> bool {
+    HOME_DIR_OVERRIDE.with(|slot| slot.borrow().is_some())
+}
+
+pub fn data_path_env_var(name: &str) -> Result<String, env::VarError> {
+    if home_dir_is_overridden() {
+        return Err(env::VarError::NotPresent);
+    }
+    env::var(name)
 }
 
 fn home_dir_from_env(
@@ -38,6 +72,7 @@ fn non_empty_path(path: Option<std::ffi::OsString>) -> Option<PathBuf> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use ccusage_test_support::EnvVarGuard;
     use std::ffi::OsString;
 
     #[test]
@@ -66,5 +101,44 @@ mod tests {
             Some(OsString::from("\\Users\\runner")),
         );
         assert_eq!(path, Some(PathBuf::from("C:\\Users\\runner")));
+    }
+
+    #[test]
+    fn scoped_override_replaces_home_and_restores_it_after_return() {
+        let before = home_dir();
+
+        let inside = with_home_dir_override(PathBuf::from("/srv/users/alice"), || {
+            assert!(home_dir_is_overridden());
+            home_dir()
+        });
+
+        assert_eq!(inside, Some(PathBuf::from("/srv/users/alice")));
+        assert!(!home_dir_is_overridden());
+        assert_eq!(home_dir(), before);
+    }
+
+    #[test]
+    fn scoped_override_restores_home_after_panic() {
+        let before = home_dir();
+
+        let _ = std::panic::catch_unwind(|| {
+            with_home_dir_override(PathBuf::from("/srv/users/alice"), || panic!("boom"));
+        });
+
+        assert!(!home_dir_is_overridden());
+        assert_eq!(home_dir(), before);
+    }
+
+    #[test]
+    fn scoped_override_hides_data_path_environment_variables() {
+        let _env = EnvVarGuard::set("CCUSAGE_TEST_DATA_HOME", "/custom/data");
+        assert_eq!(
+            data_path_env_var("CCUSAGE_TEST_DATA_HOME").as_deref(),
+            Ok("/custom/data")
+        );
+
+        with_home_dir_override(PathBuf::from("/srv/users/alice"), || {
+            assert!(data_path_env_var("CCUSAGE_TEST_DATA_HOME").is_err());
+        });
     }
 }

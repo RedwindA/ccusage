@@ -141,6 +141,14 @@ bunx @redwind/ccusage daily --all
 bunx @redwind/ccusage daily --sections daily,monthly,session --json
 bunx @redwind/ccusage daily --by-agent --json
 
+# Linux root: scan every system user's default data directories
+sudo ccusage --all-users
+sudo ccusage monthly --all-users --json
+
+# Linux root: scan every system user's default data directories
+sudo ccusage --all-users
+sudo ccusage monthly --all-users --json
+
 # Filters and options
 bunx @redwind/ccusage daily --since 2026-04-25 --until 2026-05-16
 bunx @redwind/ccusage daily --last 1  # Today
@@ -159,6 +167,8 @@ bunx @redwind/ccusage claude daily --instances --project myproject --json  # Com
 bunx @redwind/ccusage --compact  # Force compact table mode
 bunx @redwind/ccusage monthly --compact  # Compact monthly report
 ```
+
+`--all-users` is available only to Linux root for unified daily, weekly, monthly, and session reports. It groups rows by system username and scans each account's default agent directories. Source-path environment variables and configured `pi.stores[]` are ignored with a warning because they cannot be attributed reliably; unreadable or damaged per-user sources are warned and skipped. Use it only when you are authorized to inspect every account's local agent history.
 
 ## Features
 

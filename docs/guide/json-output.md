@@ -47,6 +47,12 @@ ccusage daily --sections daily,monthly,session --by-agent --json
 
 `--sections` emits each requested unified section from one load. The invoked command's section is always included, and the top-level `totals` object remains the total for that invoked section. JSON keys are emitted with the invoked section first, then remaining sections in `daily`, `weekly`, `monthly`, `session` order, with `totals` last. `--by-agent` adds an `agents` array to daily, weekly, and monthly rows; session rows are already per-agent.
 
+On Linux, root can add `--all-users` to a unified report. Each top-level report row then includes a `user` string and periods are grouped separately per username; nested `agents` entries inherit the parent user and do not repeat it. The top-level `totals` object combines all users.
+
+```bash
+sudo ccusage daily --all-users --by-agent --json
+```
+
 ```json
 {
 	"daily": [

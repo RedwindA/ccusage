@@ -1,6 +1,6 @@
 use std::{
     collections::HashSet,
-    env, fs,
+    fs,
     path::{Path, PathBuf},
 };
 
@@ -12,7 +12,7 @@ pub(super) fn paths(custom_path: Option<&str>) -> Vec<PathBuf> {
     if let Some(custom_path) = custom_path.filter(|path| !path.trim().is_empty()) {
         return existing_path_list(custom_path);
     }
-    if let Ok(env_paths) = env::var(OPENCLAW_DIR_ENV)
+    if let Ok(env_paths) = crate::home::data_path_env_var(OPENCLAW_DIR_ENV)
         && !env_paths.trim().is_empty()
     {
         return existing_path_list(&env_paths);

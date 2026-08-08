@@ -1,6 +1,5 @@
 use std::{
     collections::HashSet,
-    env,
     path::{Path, PathBuf},
 };
 
@@ -12,7 +11,7 @@ pub(super) const KILO_DB_FILE_NAME: &str = "kilo.db";
 pub(super) fn paths() -> Result<Vec<PathBuf>> {
     let mut paths = Vec::new();
     let mut seen = HashSet::new();
-    if let Ok(env_paths) = env::var(KILO_DATA_DIR_ENV) {
+    if let Ok(env_paths) = crate::home::data_path_env_var(KILO_DATA_DIR_ENV) {
         for raw in env_paths
             .split(',')
             .map(str::trim)

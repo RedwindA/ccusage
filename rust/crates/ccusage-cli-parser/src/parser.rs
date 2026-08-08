@@ -21,6 +21,7 @@ enum ControlArg {
 struct RootAllOptions {
     sections: Option<Vec<AgentReportKind>>,
     by_agent: bool,
+    all_users: bool,
     first_flag: Option<&'static str>,
 }
 
@@ -43,6 +44,7 @@ impl RootAllOptions {
             kind,
             sections: self.sections,
             by_agent: self.by_agent,
+            all_users: self.all_users,
             pi_path: None,
             open_claw_path: None,
             codex_speed: CodexSpeed::Auto,
@@ -342,9 +344,12 @@ fn parse_root_all_arg(
     parser: &mut ArgParser,
     options: &mut RootAllOptions,
 ) -> Result<bool, String> {
-    if let Some(flag) =
-        parse_unified_report_arg(parser, &mut options.sections, &mut options.by_agent)?
-    {
+    if let Some(flag) = parse_unified_report_arg(
+        parser,
+        &mut options.sections,
+        &mut options.by_agent,
+        &mut options.all_users,
+    )? {
         options.mark_used(flag);
         return Ok(true);
     }
@@ -355,6 +360,7 @@ fn parse_unified_report_arg(
     parser: &mut ArgParser,
     sections: &mut Option<Vec<AgentReportKind>>,
     by_agent: &mut bool,
+    all_users: &mut bool,
 ) -> Result<Option<&'static str>, String> {
     if matches!(parser.peek(), Some("--all")) {
         parser.next();
@@ -370,6 +376,11 @@ fn parse_unified_report_arg(
         *by_agent = true;
         return Ok(Some("--by-agent"));
     }
+    if matches!(parser.peek(), Some("--all-users")) {
+        parser.next();
+        *all_users = true;
+        return Ok(Some("--all-users"));
+    }
     Ok(None)
 }
 
@@ -382,8 +393,10 @@ fn parse_all_command(
 ) -> Result<Command, String> {
     let mut sections = initial_options.sections;
     let mut by_agent = initial_options.by_agent;
+    let mut all_users = initial_options.all_users;
     while parser.peek().is_some() {
-        if parse_unified_report_arg(parser, &mut sections, &mut by_agent)?.is_some() {
+        if parse_unified_report_arg(parser, &mut sections, &mut by_agent, &mut all_users)?.is_some()
+        {
             continue;
         }
         parse_shared_arg(parser, &mut shared)?;
@@ -393,6 +406,7 @@ fn parse_all_command(
         kind,
         sections,
         by_agent,
+        all_users,
         pi_path: None,
         open_claw_path: None,
         codex_speed: CodexSpeed::Auto,
@@ -408,8 +422,10 @@ fn parse_top_level_session_command(
     let mut args = SessionArgs { shared, id: None };
     let mut sections = initial_options.sections;
     let mut by_agent = initial_options.by_agent;
+    let mut all_users = initial_options.all_users;
     while parser.peek().is_some() {
-        if parse_unified_report_arg(parser, &mut sections, &mut by_agent)?.is_some() {
+        if parse_unified_report_arg(parser, &mut sections, &mut by_agent, &mut all_users)?.is_some()
+        {
             continue;
         }
         if parse_shared_arg_for_command(parser, &mut args.shared)? {
@@ -422,6 +438,9 @@ fn parse_top_level_session_command(
     }
 
     if args.id.is_some() {
+        if all_users {
+            return Err("The --all-users option cannot be used with session --id.".to_string());
+        }
         if sections.is_some() || by_agent {
             return Err(
                 "The --sections and --by-agent options cannot be used with session --id."
@@ -436,6 +455,7 @@ fn parse_top_level_session_command(
         kind: AgentReportKind::Session,
         sections,
         by_agent,
+        all_users,
         pi_path: None,
         open_claw_path: None,
         codex_speed: CodexSpeed::Auto,
@@ -604,6 +624,7 @@ fn parse_codex_command(
         kind,
         sections: None,
         by_agent: false,
+        all_users: false,
         pi_path: None,
         open_claw_path: None,
         codex_speed,
@@ -697,6 +718,7 @@ fn parse_pi_command(
         kind,
         sections: None,
         by_agent: false,
+        all_users: false,
         pi_path,
         open_claw_path: None,
         codex_speed,
@@ -726,6 +748,7 @@ fn parse_openclaw_command(
         kind,
         sections: None,
         by_agent: false,
+        all_users: false,
         pi_path: None,
         open_claw_path,
         codex_speed,
@@ -756,6 +779,7 @@ fn agent_command_args(shared: SharedArgs, kind: AgentReportKind) -> AgentCommand
         kind,
         sections: None,
         by_agent: false,
+        all_users: false,
         pi_path: None,
         open_claw_path: None,
         codex_speed: CodexSpeed::Auto,

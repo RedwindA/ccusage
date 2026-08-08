@@ -1,4 +1,4 @@
-use std::{collections::HashSet, env, path::PathBuf};
+use std::{collections::HashSet, path::PathBuf};
 
 use crate::{Result, collect_files_with_extension};
 
@@ -22,7 +22,7 @@ pub(super) fn paths() -> Result<Vec<PathBuf>> {
 }
 
 fn copilot_exporter_path() -> Option<PathBuf> {
-    let path = env::var(COPILOT_OTEL_FILE_EXPORTER_PATH_ENV).ok()?;
+    let path = crate::home::data_path_env_var(COPILOT_OTEL_FILE_EXPORTER_PATH_ENV).ok()?;
     let path = path.trim();
     if path.is_empty() {
         return None;

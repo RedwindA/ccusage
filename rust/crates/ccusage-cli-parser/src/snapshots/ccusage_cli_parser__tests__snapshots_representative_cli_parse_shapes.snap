@@ -1,6 +1,5 @@
 ---
-source: crates/ccusage-cli/src/tests.rs
-assertion_line: 752
+source: crates/ccusage-cli-parser/src/tests.rs
 expression: cases
 ---
 [
@@ -33,6 +32,7 @@ expression: cases
     "case": "root daily with shared flags",
     "cli": {
       "command": {
+        "allUsers": false,
         "byAgent": false,
         "codexSpeed": "Auto",
         "kind": "Daily",
@@ -181,6 +181,7 @@ expression: cases
     "case": "codex monthly fast",
     "cli": {
       "command": {
+        "allUsers": false,
         "byAgent": false,
         "codexSpeed": "Fast",
         "kind": "Monthly",
@@ -233,6 +234,7 @@ expression: cases
     "case": "opencode weekly",
     "cli": {
       "command": {
+        "allUsers": false,
         "byAgent": false,
         "codexSpeed": "Auto",
         "kind": "Weekly",
@@ -285,6 +287,7 @@ expression: cases
     "case": "pi session path",
     "cli": {
       "command": {
+        "allUsers": false,
         "byAgent": false,
         "codexSpeed": "Auto",
         "kind": "Session",
@@ -337,6 +340,7 @@ expression: cases
     "case": "openclaw session path",
     "cli": {
       "command": {
+        "allUsers": false,
         "byAgent": false,
         "codexSpeed": "Auto",
         "kind": "Session",

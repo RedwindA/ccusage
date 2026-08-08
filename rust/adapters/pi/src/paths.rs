@@ -1,4 +1,4 @@
-use std::{collections::HashSet, env, path::PathBuf};
+use std::{collections::HashSet, path::PathBuf};
 
 use crate::{Result, path_utils::expand_home_path};
 
@@ -8,7 +8,7 @@ pub fn paths(custom_path: Option<&str>) -> Result<Vec<PathBuf>> {
     if let Some(custom_path) = custom_path.filter(|path| !path.trim().is_empty()) {
         return Ok(existing_path_list(custom_path));
     }
-    if let Ok(env_paths) = env::var(PI_AGENT_DIR_ENV)
+    if let Ok(env_paths) = crate::home::data_path_env_var(PI_AGENT_DIR_ENV)
         && !env_paths.trim().is_empty()
     {
         return Ok(existing_path_list(&env_paths));

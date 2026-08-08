@@ -165,6 +165,7 @@ dependencies = [
  "ccusage-core",
  "ccusage-test-support",
  "insta",
+ "libc",
  "serde",
  "serde_json",
 ]

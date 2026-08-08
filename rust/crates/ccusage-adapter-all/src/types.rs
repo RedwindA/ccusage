@@ -7,6 +7,7 @@ use crate::{ModelBreakdown, cli::AgentReportKind, fast::FxHashMap};
 #[derive(Debug, Clone)]
 pub(super) struct AllRow {
     pub(super) period: String,
+    pub(super) user: Option<String>,
     pub(super) agent: &'static str,
     pub(super) models_used: Vec<String>,
     pub(super) input_tokens: u64,
@@ -24,12 +25,14 @@ pub(super) struct AllRow {
 pub(super) struct AllLoadResult {
     pub(super) rows: Vec<AllRow>,
     pub(super) detected_agents: Vec<&'static str>,
+    pub(super) warnings: Vec<String>,
 }
 
 pub(super) struct AllSectionsLoadResult {
     pub(super) sections: Vec<(AgentReportKind, Vec<AllRow>)>,
     pub(super) daily_detected_agents: Vec<&'static str>,
     pub(super) session_detected_agents: Vec<&'static str>,
+    pub(super) warnings: Vec<String>,
 }
 
 impl AllSectionsLoadResult {
@@ -46,13 +49,14 @@ impl AllSectionsLoadResult {
 pub(super) struct AgentRows {
     pub(super) rows: Vec<AllRow>,
     pub(super) detected: bool,
+    pub(super) warnings: Vec<String>,
 }
 
 pub(super) struct AgentLoadSpec<'scope> {
     pub(super) index: usize,
     pub(super) agent: &'static str,
     pub(super) progress_agent: crate::progress::UsageLoadAgent,
-    pub(super) load: Box<dyn FnOnce() -> crate::Result<AgentRows> + Send + 'scope>,
+    pub(super) load: Box<dyn Fn() -> crate::Result<AgentRows> + Send + 'scope>,
 }
 
 pub(super) struct LoadedAgentRows {
@@ -103,7 +107,7 @@ impl AllAccumulator {
         }
     }
 
-    pub(super) fn into_row(self, period: String) -> AllRow {
+    pub(super) fn into_row(self, period: String, user: Option<String>) -> AllRow {
         let mut agent_breakdowns = self.agent_breakdowns;
         for breakdown in &mut agent_breakdowns {
             breakdown.period = period.clone();
@@ -113,6 +117,7 @@ impl AllAccumulator {
         model_breakdowns.sort_by(|a, b| b.cost.total_cmp(&a.cost));
         AllRow {
             period,
+            user,
             agent: "all",
             models_used: self.models.into_iter().collect(),
             input_tokens: self.input_tokens,

@@ -1,11 +1,11 @@
-use std::{collections::HashSet, env, path::PathBuf};
+use std::{collections::HashSet, path::PathBuf};
 
 use crate::Result;
 
 pub(super) fn paths() -> Result<Vec<PathBuf>> {
     let mut paths = Vec::new();
     let mut seen = HashSet::new();
-    if let Ok(env_paths) = env::var("OPENCODE_DATA_DIR") {
+    if let Ok(env_paths) = crate::home::data_path_env_var("OPENCODE_DATA_DIR") {
         for raw in env_paths
             .split(',')
             .map(str::trim)

@@ -124,6 +124,7 @@ pub struct AgentCommandArgs {
     pub kind: AgentReportKind,
     pub sections: Option<Vec<AgentReportKind>>,
     pub by_agent: bool,
+    pub all_users: bool,
     pub pi_path: Option<String>,
     pub open_claw_path: Option<String>,
     pub codex_speed: CodexSpeed,

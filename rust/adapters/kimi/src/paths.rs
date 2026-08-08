@@ -1,6 +1,5 @@
 use std::{
     collections::HashSet,
-    env,
     path::{Component, Path, PathBuf},
 };
 
@@ -13,7 +12,7 @@ const KIMI_WIRE_FILE_NAME: &str = "wire.jsonl";
 fn paths() -> Result<Vec<PathBuf>> {
     let mut paths = Vec::new();
     let mut seen = HashSet::new();
-    if let Ok(env_paths) = env::var(KIMI_DATA_DIR_ENV) {
+    if let Ok(env_paths) = crate::home::data_path_env_var(KIMI_DATA_DIR_ENV) {
         for raw in env_paths
             .split(',')
             .map(str::trim)

@@ -1,4 +1,4 @@
-use std::{collections::HashSet, env, path::PathBuf};
+use std::{collections::HashSet, path::PathBuf};
 
 use crate::Result;
 
@@ -6,7 +6,7 @@ const GOOSE_PATH_ROOT_ENV: &str = "GOOSE_PATH_ROOT";
 pub(super) const GOOSE_DB_FILE_NAME: &str = "sessions.db";
 
 pub(super) fn goose_db_paths() -> Result<Vec<PathBuf>> {
-    let candidates = if let Ok(root) = env::var(GOOSE_PATH_ROOT_ENV) {
+    let candidates = if let Ok(root) = crate::home::data_path_env_var(GOOSE_PATH_ROOT_ENV) {
         let root = root.trim();
         if root.is_empty() {
             default_goose_db_candidates()?

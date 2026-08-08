@@ -13,7 +13,8 @@ neither has a consumer outside it.
 - `summary.rs`, `agent_report.rs`, `output.rs` — row aggregation, period labels,
   JSON shaping, and table rendering.
 - `date_utils.rs`, `fast.rs`, `home.rs`, `path_utils.rs`, `utils.rs` — timestamp
-  parsing, byte-level line scanning, and small shared helpers.
+  parsing, byte-level line scanning, scoped home overrides for multi-user discovery,
+  and small shared helpers.
 - `progress.rs` — the load progress indicator.
 - `types.rs`, `CliError`, and the `Result` alias every crate returns.
 

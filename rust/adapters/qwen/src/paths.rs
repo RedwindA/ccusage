@@ -1,6 +1,5 @@
 use std::{
     collections::HashSet,
-    env,
     path::{Component, Path, PathBuf},
 };
 
@@ -9,7 +8,7 @@ use crate::{Result, collect_files_with_extension};
 const QWEN_DATA_DIR_ENV: &str = "QWEN_DATA_DIR";
 
 fn paths() -> Result<Vec<PathBuf>> {
-    let candidates = if let Ok(paths) = env::var(QWEN_DATA_DIR_ENV) {
+    let candidates = if let Ok(paths) = crate::home::data_path_env_var(QWEN_DATA_DIR_ENV) {
         paths
             .split(',')
             .map(str::trim)

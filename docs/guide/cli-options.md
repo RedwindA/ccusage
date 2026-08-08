@@ -169,9 +169,12 @@ ccusage daily --sections daily,monthly,session --json
 
 # Add per-agent breakdowns to daily, weekly, and monthly JSON rows
 ccusage daily --by-agent --json
+
+# Linux root only: add a user dimension and scan every system account home
+sudo ccusage daily --all-users
 ```
 
-`--sections` accepts a comma-separated list of `daily`, `weekly`, `monthly`, and `session`. The invoked report section is always included. For table output, each requested section is printed as a separate table. `--by-agent` is JSON-only; session rows are already per-agent.
+`--sections` accepts a comma-separated list of `daily`, `weekly`, `monthly`, and `session`. The invoked report section is always included. For table output, each requested section is printed as a separate table. `--by-agent` is JSON-only; session rows are already per-agent. `--all-users` is Linux-only, requires effective UID 0, and is available only for these unified reports. It scans account home defaults, ignores source-specific path overrides and `pi.stores[]`, and continues with warnings when one user/source cannot be read.
 
 ### Daily Command
 

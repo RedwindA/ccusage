@@ -93,6 +93,11 @@
 			"default": "false"
 		},
 		{
+			"flags": "--all-users",
+			"description": "Scan default data directories for all Linux system users (root only)",
+			"default": "false"
+		},
+		{
 			"flags": "-O, --offline",
 			"description": "Use cached pricing data where supported",
 			"default": "false"

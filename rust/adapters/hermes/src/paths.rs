@@ -1,11 +1,11 @@
-use std::{collections::HashSet, env, path::PathBuf};
+use std::{collections::HashSet, path::PathBuf};
 
 use crate::Result;
 
 const HERMES_HOME_ENV: &str = "HERMES_HOME";
 
 pub(super) fn hermes_state_db_paths() -> Result<Vec<PathBuf>> {
-    let homes = if let Ok(paths) = env::var(HERMES_HOME_ENV) {
+    let homes = if let Ok(paths) = crate::home::data_path_env_var(HERMES_HOME_ENV) {
         paths
             .split(',')
             .map(str::trim)

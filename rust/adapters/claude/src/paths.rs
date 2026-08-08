@@ -1,7 +1,4 @@
-use std::{
-    env,
-    path::{Path, PathBuf},
-};
+use std::path::{Path, PathBuf};
 
 use memchr::memmem;
 
@@ -12,7 +9,7 @@ use ccusage_adapter_common::collect_usage_files;
 pub fn claude_paths() -> Result<Vec<PathBuf>> {
     let mut paths = Vec::new();
     let mut seen = FxHashSet::default();
-    if let Ok(env_paths) = env::var("CLAUDE_CONFIG_DIR") {
+    if let Ok(env_paths) = home::data_path_env_var("CLAUDE_CONFIG_DIR") {
         for raw in env_paths
             .split(',')
             .map(str::trim)
@@ -32,7 +29,7 @@ pub fn claude_paths() -> Result<Vec<PathBuf>> {
     }
 
     let home = home::home_dir().ok_or_else(|| cli_error("home directory is not set"))?;
-    let xdg = env::var("XDG_CONFIG_HOME")
+    let xdg = home::data_path_env_var("XDG_CONFIG_HOME")
         .map(PathBuf::from)
         .unwrap_or_else(|_| PathBuf::from(&home).join(".config"));
     for path in [xdg.join("claude"), home.join(".claude")] {

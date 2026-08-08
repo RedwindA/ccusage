@@ -1,4 +1,4 @@
-use std::{collections::HashSet, env, path::PathBuf};
+use std::{collections::HashSet, path::PathBuf};
 
 use crate::{Result, collect_files_with_extension};
 
@@ -7,7 +7,7 @@ pub(super) const GEMINI_DATA_DIR_ENV: &str = "GEMINI_DATA_DIR";
 fn paths() -> Result<Vec<PathBuf>> {
     let mut paths = Vec::new();
     let mut seen = HashSet::new();
-    if let Ok(env_paths) = env::var(GEMINI_DATA_DIR_ENV) {
+    if let Ok(env_paths) = crate::home::data_path_env_var(GEMINI_DATA_DIR_ENV) {
         for raw in env_paths
             .split(',')
             .map(str::trim)
