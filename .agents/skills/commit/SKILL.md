@@ -30,7 +30,7 @@ Tiny is not partial. A move, rename, or extraction lands as a single commit hold
 
 Keep separate concerns in separate commits even when each change is correct, so reverting one concern does not revert unrelated work.
 
-PR branches are squash-merged, so review fixes stack as follow-up commits. Amend only unpublished local mistakes, or when the user asks.
+Published changes usually land directly on `main`, so fixes stack as small follow-up commits. Amend only unpublished local mistakes, or when the user asks.
 
 ## Messages
 
@@ -42,6 +42,6 @@ Formatter-only changes are `chore: format`, or `chore(<scope>): format` when the
 
 ## Push (push=true)
 
-Changes reach `main` through a PR, so commit on a feature branch; `references/push.md` has the branch and upstream checks.
+This personal fork accepts direct pushes to `main`; use a feature branch only when the user requests one. `references/push.md` has the branch, fast-forward, release, and upstream checks.
 
 Push once every commit is in place and let the hooks in `nix/git-hooks.nix` run — treefmt and gitleaks on commit; treefmt, gitleaks, oxlint, `clippy -D warnings`, node test, and cargo test on push. Their failures are part of normal validation, so fix them in a new small commit.

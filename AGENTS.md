@@ -49,7 +49,8 @@ Read the nearest `AGENTS.md` before editing:
   ecosystem or exposes a JavaScript API.
 - Repository-facing GitHub communication - issue comments, PR descriptions, review replies, triage
   notes, bot-directed replies - is US English.
-- PR branches are squash-merged, so prefer small stacked follow-up commits over
-  `git commit --amend` unless the user asks for an amend.
+- This repository is a personal fork optimized for rapid development. Commit and push completed,
+  validated work directly to `main` by default; use feature branches and PRs only when the user
+  explicitly requests them.
 - Work happens inside the pinned Nix dev shell: run `direnv allow` when first initializing this
   environment, and prefix one-offs with `direnv exec .` from outside it.
