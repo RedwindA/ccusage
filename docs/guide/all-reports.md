@@ -44,6 +44,8 @@ sudo ccusage session --all-users --json
 
 Rows are grouped by report period and username, the table gains a **User** column, and JSON rows gain a `user` field. Top-level totals still combine all users. This mode is limited to the default `daily`, `weekly`, `monthly`, and `session` unified reports; focused agent reports and `session --id` do not accept it.
 
+Live LiteLLM pricing is refreshed once per unified command and reused across every source and user. Add `--offline` to avoid the refresh and use the embedded pricing snapshot instead.
+
 `--all-users` deliberately ignores source-path environment variables such as `CODEX_HOME` and `CLAUDE_CONFIG_DIR`, `XDG_CONFIG_HOME`, and configured `pi.stores[]`, because those paths cannot be assigned reliably to a system account. ccusage warns about ignored custom sources on stderr. Missing default directories are normal; an unreadable or damaged source is reported and skipped without discarding other users' results.
 
 All accounts with an existing home directory are considered, including root and service accounts. Run this option only when you are authorized to inspect every user's local agent history, which may contain sensitive workspace and session metadata.

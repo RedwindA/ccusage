@@ -56,15 +56,23 @@ struct QwenUsageMetadata {
     total_token_count: u64,
 }
 
-pub(super) fn load_entries(shared: &SharedArgs) -> Result<Vec<LoadedEntry>> {
-    let pricing = if shared.mode == CostMode::Display {
-        None
-    } else {
+pub(super) fn load_entries(
+    shared: &SharedArgs,
+    provided_pricing: Option<&PricingMap>,
+) -> Result<Vec<LoadedEntry>> {
+    let loaded_pricing = if shared.mode != CostMode::Display && provided_pricing.is_none() {
         Some(PricingMap::load_with_overrides(
             shared.offline,
             crate::log_level() != Some(0),
             shared.pricing_overrides.iter(),
         ))
+    } else {
+        None
+    };
+    let pricing = if shared.mode == CostMode::Display {
+        None
+    } else {
+        provided_pricing.or(loaded_pricing.as_ref())
     };
     let tz = parse_tz(shared.timezone.as_deref());
     let files = paths::discover_chat_files()?;
@@ -72,15 +80,13 @@ pub(super) fn load_entries(shared: &SharedArgs) -> Result<Vec<LoadedEntry>> {
     // the original discovery order so the surviving record per id matches the
     // single-threaded read.
     let loaded = read_files_parallel(&files, shared.single_thread, |file| {
-        read_chat_file(file, tz.as_ref(), shared.mode, pricing.as_ref(), shared).unwrap_or_else(
-            |error| {
-                debug_log(
-                    shared,
-                    format!("Failed to read Qwen chat file {}: {error}", file.display()),
-                );
-                Vec::new()
-            },
-        )
+        read_chat_file(file, tz.as_ref(), shared.mode, pricing, shared).unwrap_or_else(|error| {
+            debug_log(
+                shared,
+                format!("Failed to read Qwen chat file {}: {error}", file.display()),
+            );
+            Vec::new()
+        })
     });
     let mut entries = Vec::new();
     let mut seen = HashSet::new();

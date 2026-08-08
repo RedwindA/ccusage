@@ -32,8 +32,16 @@ pub use paths::usage_files;
 pub(crate) use paths::{claude_paths, extract_project, extract_session_parts};
 
 pub fn load_entries(shared: &SharedArgs, project_filter: Option<&str>) -> Result<Vec<LoadedEntry>> {
+    load_entries_with_pricing(shared, project_filter, None)
+}
+
+pub fn load_entries_with_pricing(
+    shared: &SharedArgs,
+    project_filter: Option<&str>,
+    pricing: Option<&PricingMap>,
+) -> Result<Vec<LoadedEntry>> {
     progress::track_usage_load(progress::UsageLoadAgent("Claude"), shared.json, || {
-        load_entries_inner(shared, project_filter)
+        load_entries_inner(shared, project_filter, pricing)
     })
 }
 
@@ -65,14 +73,24 @@ pub fn load_daily_summaries(
     project_filter: Option<&str>,
     group_by_project: bool,
 ) -> Result<Vec<UsageSummary>> {
+    load_daily_summaries_with_pricing(shared, project_filter, group_by_project, None)
+}
+
+pub fn load_daily_summaries_with_pricing(
+    shared: &SharedArgs,
+    project_filter: Option<&str>,
+    group_by_project: bool,
+    pricing: Option<&PricingMap>,
+) -> Result<Vec<UsageSummary>> {
     progress::track_usage_load(progress::UsageLoadAgent("Claude"), shared.json, || {
-        daily::load_daily_summaries_inner(shared, project_filter, group_by_project)
+        daily::load_daily_summaries_inner(shared, project_filter, group_by_project, pricing)
     })
 }
 
 fn load_entries_inner(
     shared: &SharedArgs,
     project_filter: Option<&str>,
+    provided_pricing: Option<&PricingMap>,
 ) -> Result<Vec<LoadedEntry>> {
     let paths = claude_paths()?;
     debug_log(
@@ -92,19 +110,24 @@ fn load_entries_inner(
         return Ok(Vec::new());
     }
 
-    let pricing = if shared.mode == CostMode::Display {
-        None
-    } else {
+    let loaded_pricing = if shared.mode != CostMode::Display && provided_pricing.is_none() {
         Some(PricingMap::load_with_overrides(
             shared.offline,
             log_level() != Some(0),
             shared.pricing_overrides.iter(),
         ))
+    } else {
+        None
+    };
+    let pricing = if shared.mode == CostMode::Display {
+        None
+    } else {
+        provided_pricing.or(loaded_pricing.as_ref())
     };
     let tz = parse_tz(shared.timezone.as_deref());
     let mode = shared.mode;
     let loaded_files = read_files_parallel(&files, shared.single_thread, |file| {
-        read_usage_file(file, tz.as_ref(), mode, pricing.as_ref())
+        read_usage_file(file, tz.as_ref(), mode, pricing)
     });
     let loaded_entry_count = loaded_files
         .iter()
@@ -599,14 +622,59 @@ mod tests {
     use std::{path::Path, sync::Arc};
 
     use super::{
-        extract_session_parts, has_unsupported_null_field, paths::is_project_path_segment,
-        push_deduped_entry, read_usage_file, usage_files,
+        extract_session_parts, has_unsupported_null_field, load_daily_summaries_with_pricing,
+        load_entries_with_pricing, paths::is_project_path_segment, push_deduped_entry,
+        read_usage_file, usage_files,
     };
     use crate::{
         LoadedEntry, PricingMap, TimestampMs, TokenUsageRaw, UsageEntry, UsageMessage,
-        cli::CostMode,
+        cli::{CostMode, SharedArgs},
     };
-    use ccusage_test_support::fs_fixture;
+    use ccusage_test_support::{EnvVarGuard, fs_fixture};
+
+    #[test]
+    fn full_loader_uses_provided_pricing() {
+        let fixture = fs_fixture!({
+            "projects/project-a/session-a/chat.jsonl": r#"{"timestamp":"2026-05-22T02:34:40.000Z","sessionId":"session-a","message":{"id":"msg-a","model":"provided-model","usage":{"input_tokens":10,"output_tokens":2}},"requestId":"req-a"}"#,
+        });
+        let mut pricing = PricingMap::default();
+        pricing.load_json(
+            r#"{"provided-model":{"input_cost_per_token":1,"output_cost_per_token":1}}"#,
+        );
+        let shared = SharedArgs {
+            mode: CostMode::Calculate,
+            offline: true,
+            ..SharedArgs::default()
+        };
+        let _env = EnvVarGuard::set("CLAUDE_CONFIG_DIR", fixture.root());
+
+        let entries = load_entries_with_pricing(&shared, None, Some(&pricing)).unwrap();
+
+        assert_eq!(entries.len(), 1);
+        assert_eq!(entries[0].cost, 12.0);
+    }
+
+    #[test]
+    fn daily_loader_uses_provided_pricing() {
+        let fixture = fs_fixture!({
+            "projects/project-a/session-a/chat.jsonl": r#"{"timestamp":"2026-05-22T02:34:40.000Z","sessionId":"session-a","message":{"id":"msg-a","model":"provided-model","usage":{"input_tokens":10,"output_tokens":2}},"requestId":"req-a"}"#,
+        });
+        let mut pricing = PricingMap::default();
+        pricing.load_json(
+            r#"{"provided-model":{"input_cost_per_token":1,"output_cost_per_token":1}}"#,
+        );
+        let shared = SharedArgs {
+            mode: CostMode::Calculate,
+            offline: true,
+            ..SharedArgs::default()
+        };
+        let _env = EnvVarGuard::set("CLAUDE_CONFIG_DIR", fixture.root());
+
+        let rows = load_daily_summaries_with_pricing(&shared, None, false, Some(&pricing)).unwrap();
+
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0].total_cost, 12.0);
+    }
 
     #[test]
     fn limits_usage_file_discovery_to_requested_project() {

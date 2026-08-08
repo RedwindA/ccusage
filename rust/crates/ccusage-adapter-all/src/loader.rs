@@ -159,7 +159,7 @@ fn load_base_rows(
             index: 0,
             agent: BUILT_IN_AGENT_NAMES[0],
             progress_agent: crate::progress::UsageLoadAgent("Claude"),
-            load: Box::new(|| load_claude_rows(load_kind, &loader_shared)),
+            load: Box::new(|| load_claude_rows(load_kind, &loader_shared, pricing)),
         },
         AgentLoadSpec {
             index: 1,
@@ -176,7 +176,7 @@ fn load_base_rows(
                     "opencode",
                     load_kind,
                     &loader_shared,
-                    || opencode::load_entries(&loader_shared),
+                    || opencode::load_entries_with_pricing(&loader_shared, Some(pricing)),
                     opencode::summarize_entries,
                 )?;
                 // The OpenCode loader narrows to the date window as it reads, so
@@ -348,7 +348,7 @@ fn load_base_rows(
             index: 14,
             agent: BUILT_IN_AGENT_NAMES[14],
             progress_agent: crate::progress::UsageLoadAgent("Qwen"),
-            load: Box::new(|| load_qwen_rows(load_kind, &loader_shared)),
+            load: Box::new(|| load_qwen_rows(load_kind, &loader_shared, pricing)),
         },
     ];
     if users.is_none() {
@@ -676,9 +676,13 @@ fn filtered_pi_format_agent_rows(
     })
 }
 
-fn load_claude_rows(kind: AgentReportKind, shared: &SharedArgs) -> Result<AgentRows> {
+fn load_claude_rows(
+    kind: AgentReportKind,
+    shared: &SharedArgs,
+    pricing: &PricingMap,
+) -> Result<AgentRows> {
     if kind == AgentReportKind::Session {
-        let entries = claude::load_entries(shared, None)?;
+        let entries = claude::load_entries_with_pricing(shared, None, Some(pricing))?;
         let detected = !entries.is_empty();
         let mut summaries = summarize_entry_sessions(&entries)?;
         filter_session_summaries(&mut summaries, shared);
@@ -689,7 +693,8 @@ fn load_claude_rows(kind: AgentReportKind, shared: &SharedArgs) -> Result<AgentR
         });
     }
 
-    let mut summaries = claude::load_daily_summaries(shared, None, false)?;
+    let mut summaries =
+        claude::load_daily_summaries_with_pricing(shared, None, false, Some(pricing))?;
     let detected = !summaries.is_empty();
     filter_daily_summaries_by_date(&mut summaries, shared);
     Ok(AgentRows {
@@ -761,8 +766,12 @@ fn load_priced_summary_agent_rows(
     )
 }
 
-fn load_qwen_rows(kind: AgentReportKind, shared: &SharedArgs) -> Result<AgentRows> {
-    let mut entries = qwen::load_entries(shared)?;
+fn load_qwen_rows(
+    kind: AgentReportKind,
+    shared: &SharedArgs,
+    pricing: &PricingMap,
+) -> Result<AgentRows> {
+    let mut entries = qwen::load_entries_with_pricing(shared, Some(pricing))?;
     let detected = !entries.is_empty() || qwen::has_data();
     if kind == AgentReportKind::Session {
         let mut summaries = qwen::summarize_entries(&entries, kind)?;

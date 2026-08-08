@@ -17,18 +17,43 @@ use crate::{
 };
 
 pub fn load_entries(shared: &SharedArgs) -> Result<Vec<LoadedEntry>> {
+    load_entries_with_pricing(shared, None)
+}
+
+pub fn load_entries_with_pricing(
+    shared: &SharedArgs,
+    pricing: Option<&PricingMap>,
+) -> Result<Vec<LoadedEntry>> {
     crate::progress::track_usage_load(
         crate::progress::UsageLoadAgent("OpenCode"),
         shared.json,
-        || load_entries_inner(shared),
+        || load_entries_inner(shared, pricing),
     )
 }
 
-fn load_entries_inner(shared: &SharedArgs) -> Result<Vec<LoadedEntry>> {
+fn load_entries_inner(
+    shared: &SharedArgs,
+    provided_pricing: Option<&PricingMap>,
+) -> Result<Vec<LoadedEntry>> {
+    let paths = paths()?;
+    let loaded_pricing = if shared.mode != CostMode::Display && provided_pricing.is_none() {
+        Some(PricingMap::load_with_overrides(
+            shared.offline,
+            crate::log_level() != Some(0),
+            shared.pricing_overrides.iter(),
+        ))
+    } else {
+        None
+    };
+    let pricing = if shared.mode == CostMode::Display {
+        None
+    } else {
+        provided_pricing.or(loaded_pricing.as_ref())
+    };
     let mut entries = Vec::new();
     let mut seen = HashSet::new();
-    for path in paths()? {
-        for entry in load_entries_from_directory(&path, shared)? {
+    for path in paths {
+        for entry in load_entries_from_directory_with_resolved_pricing(&path, shared, pricing)? {
             if let Some(id) = entry_id(&entry)
                 && !seen.insert(id.to_string())
             {
@@ -41,32 +66,50 @@ fn load_entries_inner(shared: &SharedArgs) -> Result<Vec<LoadedEntry>> {
     Ok(entries)
 }
 
+#[cfg(test)]
 pub fn load_entries_from_directory(
     opencode_dir: &Path,
     shared: &SharedArgs,
 ) -> Result<Vec<LoadedEntry>> {
-    let pricing = if shared.mode == CostMode::Display {
-        None
-    } else {
+    load_entries_from_directory_with_pricing(opencode_dir, shared, None)
+}
+
+#[cfg(test)]
+fn load_entries_from_directory_with_pricing(
+    opencode_dir: &Path,
+    shared: &SharedArgs,
+    provided_pricing: Option<&PricingMap>,
+) -> Result<Vec<LoadedEntry>> {
+    let loaded_pricing = if shared.mode != CostMode::Display && provided_pricing.is_none() {
         Some(PricingMap::load_with_overrides(
             shared.offline,
             crate::log_level() != Some(0),
             shared.pricing_overrides.iter(),
         ))
+    } else {
+        None
     };
+    let pricing = if shared.mode == CostMode::Display {
+        None
+    } else {
+        provided_pricing.or(loaded_pricing.as_ref())
+    };
+    load_entries_from_directory_with_resolved_pricing(opencode_dir, shared, pricing)
+}
+
+fn load_entries_from_directory_with_resolved_pricing(
+    opencode_dir: &Path,
+    shared: &SharedArgs,
+    pricing: Option<&PricingMap>,
+) -> Result<Vec<LoadedEntry>> {
     let tz = parse_tz(shared.timezone.as_deref());
     let window = DateWindow::from_shared(shared, tz.as_ref());
     let mut entries = Vec::new();
     let mut seen = HashSet::new();
     if let Some(db_path) = db_path(opencode_dir) {
-        for entry in load_entries_from_database(
-            &db_path,
-            tz.as_ref(),
-            shared.mode,
-            pricing.as_ref(),
-            shared,
-            window,
-        ) {
+        for entry in
+            load_entries_from_database(&db_path, tz.as_ref(), shared.mode, pricing, shared, window)
+        {
             if let Some(id) = entry_id(&entry)
                 && !seen.insert(id.to_string())
             {
@@ -98,14 +141,7 @@ pub fn load_entries_from_directory(
     // over the results in their original file order so parallelism never changes
     // which duplicate survives.
     let loaded = read_files_parallel(&files, shared.single_thread, |file| {
-        read_message_file(
-            file,
-            tz.as_ref(),
-            shared.mode,
-            pricing.as_ref(),
-            shared,
-            window,
-        )
+        read_message_file(file, tz.as_ref(), shared.mode, pricing, shared, window)
     });
     for entry in loaded.into_iter().flatten() {
         if let Some(id) = entry_id(&entry)
@@ -457,9 +493,34 @@ fn time_created_looks_like_millis(connection: &sqlite::Connection) -> bool {
 mod tests {
     use std::path::Path;
 
-    use super::load_entries_from_directory;
-    use crate::cli::{CostMode, SharedArgs};
-    use ccusage_test_support::fs_fixture;
+    use super::{load_entries_from_directory, load_entries_with_pricing};
+    use crate::{
+        PricingMap,
+        cli::{CostMode, SharedArgs},
+    };
+    use ccusage_test_support::{EnvVarGuard, fs_fixture};
+
+    #[test]
+    fn loader_uses_provided_pricing() {
+        let fixture = fs_fixture!({
+            "storage/message/message.json": r#"{"id":"msg-1","sessionID":"session-a","providerID":"test","modelID":"provided-model","time":{"created":1767312000000},"tokens":{"input":100,"output":50,"cache":{"read":10,"write":20}}}"#,
+        });
+        let mut pricing = PricingMap::default();
+        pricing.load_json(
+            r#"{"provided-model":{"input_cost_per_token":1,"output_cost_per_token":1,"cache_creation_input_token_cost":1,"cache_read_input_token_cost":1}}"#,
+        );
+        let shared = SharedArgs {
+            mode: CostMode::Calculate,
+            offline: true,
+            ..SharedArgs::default()
+        };
+        let _env = EnvVarGuard::set("OPENCODE_DATA_DIR", fixture.root());
+
+        let entries = load_entries_with_pricing(&shared, Some(&pricing)).unwrap();
+
+        assert_eq!(entries.len(), 1);
+        assert_eq!(entries[0].cost, 180.0);
+    }
 
     // Mirrors the real OpenCode schema, where `time_created` repeats the
     // payload's `time.created`, so tests exercise the range push-down.

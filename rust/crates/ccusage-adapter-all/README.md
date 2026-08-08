@@ -5,8 +5,8 @@ into one table or JSON document.
 
 ## Owns
 
-- `loader.rs` — per-agent loading, the agent selection the CLI asks for, and the
-  merge into shared rows.
+- `loader.rs` — per-agent loading, shared pricing, the agent selection the CLI
+  asks for, and the merge into shared rows.
 - `report.rs` — the unified row and total shapes.
 - `types.rs` — the accumulators the merge needs.
 - `users.rs` — Linux root account discovery for unified `--all-users` reports.

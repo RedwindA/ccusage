@@ -14,7 +14,7 @@ use crate::{
     print_json_or_jq, print_usage_table, sort_summaries, wants_json,
 };
 
-pub use loader::load_entries;
+pub use loader::{load_entries, load_entries_with_pricing};
 pub(crate) use report::report_from_rows;
 pub use report::summarize_entries;
 
@@ -78,6 +78,28 @@ mod tests {
     use super::*;
     use crate::UsageSummary;
     use crate::cli::{CostMode, SharedArgs};
+
+    #[test]
+    fn loader_uses_provided_pricing() {
+        let fixture = fs_fixture!({
+            "projects/myProject/chats/chat-a.jsonl": r#"{"type":"assistant","model":"provided-model","timestamp":"2026-02-23T14:24:56.857Z","sessionId":"session-json","usageMetadata":{"promptTokenCount":100,"candidatesTokenCount":50,"thoughtsTokenCount":10,"cachedContentTokenCount":5}}"#,
+        });
+        let mut pricing = PricingMap::default();
+        pricing.load_json(
+            r#"{"provided-model":{"input_cost_per_token":1,"output_cost_per_token":1,"cache_read_input_token_cost":1}}"#,
+        );
+        let shared = SharedArgs {
+            mode: CostMode::Calculate,
+            offline: true,
+            ..SharedArgs::default()
+        };
+        let _guard = EnvVarGuard::set("QWEN_DATA_DIR", fixture.root());
+
+        let entries = load_entries_with_pricing(&shared, Some(&pricing)).unwrap();
+
+        assert_eq!(entries.len(), 1);
+        assert_eq!(entries[0].cost, 165.0);
+    }
 
     #[test]
     fn loads_qwen_jsonl_usage_entries() {

@@ -29,6 +29,7 @@ pub(super) fn load_daily_summaries_inner(
     shared: &SharedArgs,
     project_filter: Option<&str>,
     group_by_project: bool,
+    provided_pricing: Option<&PricingMap>,
 ) -> Result<Vec<UsageSummary>> {
     let paths = claude_paths()?;
     let files = usage_files(&paths, project_filter);
@@ -36,24 +37,29 @@ pub(super) fn load_daily_summaries_inner(
         return Ok(Vec::new());
     }
 
-    let pricing = if shared.mode == CostMode::Display {
-        None
-    } else {
+    let loaded_pricing = if shared.mode != CostMode::Display && provided_pricing.is_none() {
         Some(PricingMap::load_with_overrides(
             shared.offline,
             log_level() != Some(0),
             shared.pricing_overrides.iter(),
         ))
+    } else {
+        None
+    };
+    let pricing = if shared.mode == CostMode::Display {
+        None
+    } else {
+        provided_pricing.or(loaded_pricing.as_ref())
     };
     let tz = parse_tz(shared.timezone.as_deref());
     let mode = shared.mode;
     let loaded_files = if shared.single_thread {
         files
             .iter()
-            .map(|file| read_daily_usage_file(file, tz.as_ref(), mode, pricing.as_ref()))
+            .map(|file| read_daily_usage_file(file, tz.as_ref(), mode, pricing))
             .collect::<Vec<_>>()
     } else {
-        read_daily_usage_files_parallel(&files, tz.as_ref(), mode, pricing.as_ref())
+        read_daily_usage_files_parallel(&files, tz.as_ref(), mode, pricing)
     };
 
     let mut deduped_indexes: FxHashMap<u64, SmallIndexVec> = FxHashMap::default();

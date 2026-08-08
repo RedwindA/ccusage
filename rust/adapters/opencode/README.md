@@ -25,6 +25,7 @@ most adapters do not.
 ## Public surface
 
 - `loader::load_entries`
+- `loader::load_entries_with_pricing`
 - `report::report_json`
 - `report::summarize_entries`
 - `run`

@@ -23,6 +23,7 @@ chunking, and ordered parallel reads.
 ## Public surface
 
 - `loader::load_entries`
+- `loader::load_entries_with_pricing`
 - `report::report_from_rows`
 - `report::summarize_entries`
 - `run`

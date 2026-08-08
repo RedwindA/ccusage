@@ -28,7 +28,9 @@ chunking, and ordered parallel reads.
 - `paths::extract_session_parts`
 - `paths::usage_files`
 - `load_entries`
+- `load_entries_with_pricing`
 - `load_daily_summaries`
+- `load_daily_summaries_with_pricing`
 - `run_dimension`
 - `usage_limit_reset_time_from_line`
 
