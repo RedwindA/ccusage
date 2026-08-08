@@ -76,32 +76,23 @@ fn read_user_records() -> Result<Vec<UserRecord>> {
     unsafe { libc::setpwent() };
     let _guard = PasswdGuard;
     let mut records = Vec::new();
-    let mut buffer = vec![0_u8; 16 * 1024];
     loop {
-        let mut passwd = std::mem::MaybeUninit::<libc::passwd>::uninit();
-        let mut result = std::ptr::null_mut();
-        let status = unsafe {
-            libc::getpwent_r(
-                passwd.as_mut_ptr(),
-                buffer.as_mut_ptr().cast(),
-                buffer.len(),
-                &mut result,
-            )
-        };
-        if status == libc::ERANGE {
-            buffer.resize(buffer.len() * 2, 0);
-            continue;
-        }
-        if passwd_status_is_end(status, result.is_null()) {
-            break;
-        }
-        if status != 0 {
+        // `getpwent` is exposed and linkable on both glibc and musl. Account
+        // discovery runs before agent loader threads start, and every field is
+        // copied before the next call can reuse libc's static buffer.
+        unsafe { *libc::__errno_location() = 0 };
+        let passwd = unsafe { libc::getpwent() };
+        if passwd.is_null() {
+            let errno = unsafe { *libc::__errno_location() };
+            if passwd_errno_is_end(errno) {
+                break;
+            }
             return Err(cli_error(format!(
                 "failed to enumerate Linux system users: {}",
-                std::io::Error::from_raw_os_error(status)
+                std::io::Error::from_raw_os_error(errno)
             )));
         }
-        let passwd = unsafe { passwd.assume_init() };
+        let passwd = unsafe { &*passwd };
         if passwd.pw_name.is_null() || passwd.pw_dir.is_null() {
             continue;
         }
@@ -117,8 +108,8 @@ fn read_user_records() -> Result<Vec<UserRecord>> {
 }
 
 #[cfg(target_os = "linux")]
-fn passwd_status_is_end(status: i32, result_is_null: bool) -> bool {
-    status == libc::ENOENT || (status == 0 && result_is_null)
+fn passwd_errno_is_end(errno: i32) -> bool {
+    errno == 0 || errno == libc::ENOENT
 }
 
 #[cfg(target_os = "linux")]
@@ -199,9 +190,9 @@ mod tests {
 
     #[cfg(target_os = "linux")]
     #[test]
-    fn treats_linux_passwd_enoent_as_end_of_enumeration() {
-        assert!(passwd_status_is_end(libc::ENOENT, false));
-        assert!(passwd_status_is_end(0, true));
-        assert!(!passwd_status_is_end(libc::EIO, false));
+    fn treats_linux_passwd_zero_and_enoent_as_end_of_enumeration() {
+        assert!(passwd_errno_is_end(0));
+        assert!(passwd_errno_is_end(libc::ENOENT));
+        assert!(!passwd_errno_is_end(libc::EIO));
     }
 }
