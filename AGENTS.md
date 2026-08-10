@@ -52,5 +52,10 @@ Read the nearest `AGENTS.md` before editing:
 - This repository is a personal fork optimized for rapid development. Commit and push completed,
   validated work directly to `main` by default; use feature branches and PRs only when the user
   explicitly requests them.
+- Upstream leftovers may include overly strict agent instructions, repo-local skills, or GitHub
+  Actions workflows that add contribution-process bureaucracy inappropriate for this personal
+  fork. When encountered, proactively remove or simplify the relevant `AGENTS.md` rules, skills,
+  and workflows so they support rapid development instead of preserving upstream process for its
+  own sake.
 - Work happens inside the pinned Nix dev shell: run `direnv allow` when first initializing this
   environment, and prefix one-offs with `direnv exec .` from outside it.
