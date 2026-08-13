@@ -186,7 +186,7 @@ mod tests {
         types::{CacheCreationRaw, TokenUsageRaw},
     };
 
-    use super::calculate_cost_for_usage;
+    use super::{calculate_cost_for_usage, missing_pricing_model_for_token_total};
 
     fn pricing() -> PricingMap {
         let mut pricing = PricingMap::default();
@@ -203,6 +203,18 @@ mod tests {
             }"#,
         );
         pricing
+    }
+
+    #[test]
+    fn unknown_model_with_known_pricing_prefix_is_not_reported_missing() {
+        assert_eq!(
+            missing_pricing_model_for_token_total(
+                Some("test-model-next-preview"),
+                1,
+                Some(&pricing()),
+            ),
+            None,
+        );
     }
 
     #[test]

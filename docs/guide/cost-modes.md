@@ -180,6 +180,10 @@ When calculating costs from tokens, ccusage uses:
 - **Automatic updates** - Pricing refreshed regularly
 - **Multiple models** - Supports Claude Opus 4.1, Sonnet 4.5, and other models
 
+When an exact model is not available yet, ccusage estimates its cost from the longest matching
+known model prefix. Exact entries, aliases, and configured pricing overrides always take priority;
+models with no matching prefix still produce a missing-pricing warning.
+
 #### Token Types
 
 ```typescript

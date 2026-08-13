@@ -439,7 +439,11 @@ impl PricingMap {
                 self.enable_embedded_models_dev_fallback
                     .then(|| embedded_models_dev_pricing().find_entry_or_alias(resolved_alias))
                     .flatten()
-            });
+            })
+            // New model variants often appear in logs before pricing sources
+            // publish an exact key. Only after every normal lookup misses, use
+            // the most specific known family prefix as an estimate.
+            .or_else(|| self.find_unknown_model_prefix(resolved_alias));
         // Store the result (including None for misses) so repeated lookups
         // for the same model that fails to match any pricing entry are also
         // short-circuited.
@@ -478,6 +482,22 @@ impl PricingMap {
         })
     }
 
+    fn find_unknown_model_prefix(&self, model: &str) -> Option<Pricing> {
+        let mut best = longest_model_prefix_match(&self.entries, model);
+        if self.enable_models_dev_fallback
+            && let Some(pricing) = models_dev_pricing()
+        {
+            best = prefer_longer_prefix(best, longest_model_prefix_match(&pricing.entries, model));
+        }
+        if self.enable_embedded_models_dev_fallback {
+            best = prefer_longer_prefix(
+                best,
+                longest_model_prefix_match(&embedded_models_dev_pricing().entries, model),
+            );
+        }
+        best.map(|(_, pricing)| pricing)
+    }
+
     pub fn context_limit(&self, model: &str) -> Option<u64> {
         let alias = crate::model_aliases::resolve_model_name(model);
         let resolved_alias = alias.as_ref();
@@ -503,6 +523,7 @@ impl PricingMap {
                     })
                     .flatten()
             })
+            .or_else(|| self.context_limit_unknown_model_prefix(resolved_alias))
     }
 
     fn context_limit_entry_or_alias(&self, model: &str) -> Option<u64> {
@@ -526,6 +547,25 @@ impl PricingMap {
                 })
                 .map(|(_, context_limit)| *context_limit)
         })
+    }
+
+    fn context_limit_unknown_model_prefix(&self, model: &str) -> Option<u64> {
+        let mut best = longest_model_prefix_match(&self.context_limits, model);
+        if self.enable_models_dev_fallback
+            && let Some(pricing) = models_dev_pricing()
+        {
+            best = prefer_longer_prefix(
+                best,
+                longest_model_prefix_match(&pricing.context_limits, model),
+            );
+        }
+        if self.enable_embedded_models_dev_fallback {
+            best = prefer_longer_prefix(
+                best,
+                longest_model_prefix_match(&embedded_models_dev_pricing().context_limits, model),
+            );
+        }
+        best.map(|(_, context_limit)| context_limit)
     }
 
     fn apply_overrides<'a, I>(&mut self, overrides: I)
@@ -1257,6 +1297,46 @@ fn pricing_key_matches(candidate: &str, model: &str, normalized_model: &str) -> 
     let normalized_candidate = normalized_pricing_key(candidate);
     contains_pricing_key(normalized_model, normalized_candidate.as_ref())
         || contains_pricing_key(normalized_candidate.as_ref(), normalized_model)
+}
+
+fn longest_model_prefix_match<'a, V: Copy>(
+    entries: &'a FxHashMap<String, V>,
+    model: &str,
+) -> Option<(&'a str, V)> {
+    let normalized_model = normalized_pricing_key(model);
+    entries
+        .iter()
+        .filter(|(candidate, _)| {
+            contains_model_prefix(model, candidate)
+                || contains_model_prefix(
+                    normalized_model.as_ref(),
+                    normalized_pricing_key(candidate).as_ref(),
+                )
+        })
+        .max_by(|(left, _), (right, _)| left.len().cmp(&right.len()).then_with(|| right.cmp(left)))
+        .map(|(candidate, value)| (candidate.as_str(), *value))
+}
+
+fn prefer_longer_prefix<'a, V: Copy>(
+    current: Option<(&'a str, V)>,
+    candidate: Option<(&'a str, V)>,
+) -> Option<(&'a str, V)> {
+    match (current, candidate) {
+        (Some(current), Some(candidate)) if candidate.0.len() > current.0.len() => Some(candidate),
+        (Some(current), _) => Some(current),
+        (None, candidate) => candidate,
+    }
+}
+
+fn contains_model_prefix(value: &str, prefix: &str) -> bool {
+    value.match_indices(prefix).any(|(index, _)| {
+        let before = index
+            .checked_sub(1)
+            .and_then(|before| value.as_bytes().get(before))
+            .copied();
+        let suffix = value.as_bytes().get(index + prefix.len()).copied();
+        before.is_none_or(is_pricing_key_boundary) && suffix.is_none_or(is_pricing_key_boundary)
+    })
 }
 
 /// Finds a key only when the surrounding bytes are non-alphanumeric boundaries.
@@ -2406,7 +2486,51 @@ mod tests {
             },
         );
 
-        assert!(pricing.find("claude-opus-4.70").is_none());
+        assert!(pricing.find_entry("claude-opus-4.70").is_none());
+    }
+
+    #[test]
+    fn unknown_model_uses_longest_known_prefix() {
+        let mut pricing = PricingMap::default();
+        pricing.entries.insert(
+            "gpt-5".to_string(),
+            Pricing {
+                input: 1.0,
+                output: 0.0,
+                cache_create: 0.0,
+                cache_read: 0.0,
+                cache_read_explicit: true,
+                input_above_200k: None,
+                output_above_200k: None,
+                cache_create_above_200k: None,
+                cache_read_above_200k: None,
+                long_context_threshold: None,
+                fast_multiplier: 1.0,
+            },
+        );
+        pricing.entries.insert(
+            "gpt-5.6".to_string(),
+            Pricing {
+                input: 2.0,
+                output: 0.0,
+                cache_create: 0.0,
+                cache_read: 0.0,
+                cache_read_explicit: true,
+                input_above_200k: None,
+                output_above_200k: None,
+                cache_create_above_200k: None,
+                cache_read_above_200k: None,
+                long_context_threshold: None,
+                fast_multiplier: 1.0,
+            },
+        );
+        pricing.context_limits.insert("gpt-5".to_string(), 100_000);
+        pricing
+            .context_limits
+            .insert("gpt-5.6".to_string(), 200_000);
+
+        assert_eq!(pricing.find("gpt-5.6.1-preview").unwrap().input, 2.0);
+        assert_eq!(pricing.context_limit("gpt-5.6.1-preview"), Some(200_000));
     }
 
     #[test]
@@ -2429,11 +2553,11 @@ mod tests {
             },
         );
 
-        assert!(pricing.find("claude-opus-4.8-20260528").is_none());
-        assert!(pricing.find("claude-opus-4-9").is_none());
-        assert!(pricing.find("claude-opus-5").is_none());
-        assert!(pricing.find("claude-opus-4.70").is_none());
-        assert!(pricing.find("claude-opus-4-20250514").is_some());
+        assert!(pricing.find_entry("claude-opus-4.8-20260528").is_none());
+        assert!(pricing.find_entry("claude-opus-4-9").is_none());
+        assert!(pricing.find_entry("claude-opus-5").is_none());
+        assert!(pricing.find_entry("claude-opus-4.70").is_none());
+        assert!(pricing.find_entry("claude-opus-4-20250514").is_some());
     }
 
     #[test]
