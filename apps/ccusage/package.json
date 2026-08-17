@@ -1,6 +1,6 @@
 {
 	"name": "@redwind/ccusage",
-	"version": "20.0.19",
+	"version": "20.0.20",
 	"description": "Personal ccusage build with model and workspace reports",
 	"homepage": "https://github.com/RedwindA/ccusage#readme",
 	"bugs": {

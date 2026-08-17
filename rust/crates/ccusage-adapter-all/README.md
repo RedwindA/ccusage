@@ -11,7 +11,7 @@ into one table or JSON document.
 - `types.rs` — the accumulators the merge needs.
 - `users.rs` — Linux root account discovery for unified `--all-users` reports.
 
-This is the only crate that depends on all 15 adapters, which keeps the adapters
+This is the only crate that depends on all 16 adapters, which keeps the adapters
 themselves independent of each other.
 
 ## Public surface
@@ -29,6 +29,7 @@ themselves independent of each other.
 - `ccusage-adapter-droid`
 - `ccusage-adapter-gemini`
 - `ccusage-adapter-goose`
+- `ccusage-adapter-grok`
 - `ccusage-adapter-hermes`
 - `ccusage-adapter-kilo`
 - `ccusage-adapter-kimi`

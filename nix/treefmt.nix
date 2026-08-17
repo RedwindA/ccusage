@@ -83,6 +83,18 @@ in
           };
         };
 
+        # The generated pricing snapshots carry upstream model ids verbatim, and
+        # some read as misspellings — one Gemini id ends in a clipped "no
+        # thinking". typos rewrites those to the word it expects, which silently
+        # stops the model from ever matching, and it rewrites them in this
+        # comment too if they are spelled out here. Only typos is excluded,
+        # because the JSON formatter is what keeps these files reviewable.
+        settings.formatter.typos.excludes = [
+          "rust/crates/ccusage-core/src/models-dev-pricing.json"
+          "rust/crates/ccusage-core/src/models-dev-catalog-rules.json"
+          "rust/adapters/codex/src/codex-auto-review-fallbacks.json"
+        ];
+
         # `bun.lock`/`bun.nix` under nix/tools are regenerated verbatim by `bun
         # install` and `bun2nix`. Formatting them fights the generators: oxfmt
         # rewrites the JSONC lockfile, and deadnix strips the unused arguments

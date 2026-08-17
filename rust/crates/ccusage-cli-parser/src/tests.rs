@@ -209,6 +209,7 @@ fn command_snapshot(command: Option<Command>) -> Value {
         Some(Command::Kimi(args)) => agent_command_snapshot("kimi", args),
         Some(Command::Qwen(args)) => agent_command_snapshot("qwen", args),
         Some(Command::OpenClaw(args)) => agent_command_snapshot("openclaw", args),
+        Some(Command::Grok(args)) => agent_command_snapshot("grok", args),
     }
 }
 
@@ -265,6 +266,33 @@ fn parses_all_users_for_unified_reports_before_after_and_without_command() {
             panic!("expected all-agent command");
         };
         assert!(args.all_users);
+    }
+}
+
+#[test]
+fn commandless_invocation_preserves_default_dispatch() {
+    let cli = parse(&["ccusage"]);
+
+    assert!(cli.command.is_none());
+}
+
+#[test]
+fn rejects_date_bounds_that_are_not_real_calendar_dates() {
+    for value in [
+        "2026-02-30",
+        "2026-13-01",
+        "abc",
+        "2026/07/10",
+        "2026-07-10T00:00:00Z",
+    ] {
+        assert_eq!(
+            parse_error(&["ccusage", "daily", "--since", value]),
+            format!("Invalid value for --since '{value}'. Expected YYYY-MM-DD or YYYYMMDD.")
+        );
+        assert_eq!(
+            parse_error(&["ccusage", "daily", "--until", value]),
+            format!("Invalid value for --until '{value}'. Expected YYYY-MM-DD or YYYYMMDD.")
+        );
     }
 }
 
@@ -374,6 +402,18 @@ fn dimension_reports_reject_last_and_other_agents() {
         parse_error(&["ccusage", "opencode", "workspace"]),
         "The \"workspace\" report is not available for OpenCode usage.\nUse \"ccusage opencode daily\" for OpenCode usage reports."
     );
+}
+
+#[test]
+fn accepts_both_documented_date_bound_formats() {
+    for (value, normalized) in [("2026-07-10", "20260710"), ("20260710", "20260710")] {
+        let cli = parse(&["ccusage", "daily", "--since", value, "--until", value]);
+        let Some(Command::All(args)) = cli.command else {
+            panic!("expected all-agent command");
+        };
+        assert_eq!(args.shared.since.as_deref(), Some(normalized));
+        assert_eq!(args.shared.until.as_deref(), Some(normalized));
+    }
 }
 
 #[test]
@@ -755,7 +795,7 @@ fn root_help_lists_agent_namespaces_without_nested_commands() {
     let help = help_text();
     let agents = [
         "claude", "codex", "opencode", "amp", "droid", "codebuff", "hermes", "pi", "goose", "kilo",
-        "copilot", "gemini", "kimi", "qwen", "openclaw",
+        "copilot", "gemini", "kimi", "qwen", "openclaw", "grok",
     ];
 
     for agent in agents {
@@ -858,6 +898,17 @@ fn contextual_statusline_help_lists_choice_options() {
 
     assert!(help.contains("choices: off | emoji | text | emoji-text"));
     assert!(help.contains("choices: auto | ccusage | cc | both"));
+}
+
+#[test]
+fn grok_help_does_not_advertise_path_option() {
+    let help = help_text_for_args(&[
+        "ccusage".to_string(),
+        "grok".to_string(),
+        "daily".to_string(),
+    ]);
+
+    assert!(!help.contains("--grok-path"));
 }
 
 #[test]
@@ -971,6 +1022,10 @@ fn snapshots_representative_cli_parse_shapes() {
                 "session",
                 "--open-claw-path=/tmp/openclaw",
             ])),
+        }),
+        json!({
+            "case": "grok daily",
+            "cli": cli_snapshot(parse(&["ccusage", "grok", "daily", "--json"])),
         }),
         json!({
             "case": "blocks active recent",
@@ -1348,6 +1403,23 @@ fn parses_openclaw_session_options() {
     assert_eq!(args.kind, AgentReportKind::Session);
     assert!(args.shared.json);
     assert_eq!(args.open_claw_path.as_deref(), Some("/tmp/openclaw"));
+}
+
+#[test]
+fn parses_grok_daily_options() {
+    let cli = parse(&["ccusage", "grok", "daily", "--json"]);
+    let Some(Command::Grok(args)) = cli.command else {
+        panic!("expected grok command");
+    };
+    assert_eq!(args.kind, AgentReportKind::Daily);
+    assert!(args.shared.json);
+}
+
+#[test]
+fn rejects_grok_path_option() {
+    let error = parse_error(&["ccusage", "grok", "daily", "--grok-path", "/tmp/grok-home"]);
+
+    assert_eq!(error, "Unknown option '--grok-path'");
 }
 
 #[test]
