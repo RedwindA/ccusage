@@ -119,6 +119,7 @@ bunx @redwind/ccusage statusline  # Claude Code status line for hooks (Beta)
 # Source-focused reports and options
 bunx @redwind/ccusage claude daily --mode display
 bunx @redwind/ccusage codex daily --speed fast
+bunx @redwind/ccusage codex daily --by-source
 bunx @redwind/ccusage codex model --speed fast
 bunx @redwind/ccusage claude workspace --breakdown
 bunx @redwind/ccusage opencode weekly
@@ -142,6 +143,7 @@ bunx @redwind/ccusage pi daily --pi-path /path/to/sessions,/archive/pi/sessions
 bunx @redwind/ccusage daily --all
 bunx @redwind/ccusage daily --sections daily,monthly,session --json
 bunx @redwind/ccusage daily --by-agent --json
+bunx @redwind/ccusage daily --by-source --json
 
 # Linux root: scan every system user's default data directories
 sudo ccusage --all-users
@@ -199,6 +201,8 @@ bunx @redwind/ccusage monthly --compact  # Compact monthly report
 ## Documentation
 
 Full documentation is available at **[ccusage.com](https://ccusage.com/)**
+
+Further reading (Japanese): [how ccusage began](https://ryoppippi.com/blog/2025-05-29-zenn-6c9a8fe6629cd6-ja/)
 
 ## Development
 

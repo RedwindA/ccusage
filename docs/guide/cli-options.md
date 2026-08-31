@@ -174,9 +174,12 @@ ccusage daily --by-agent --json
 
 # Linux root only: add a user dimension and scan every system account home
 sudo ccusage daily --all-users
+
+# Add Codex client/originator breakdowns to unified output
+ccusage daily --by-source --json
 ```
 
-`--sections` accepts a comma-separated list of `daily`, `weekly`, `monthly`, and `session`. The invoked report section is always included. For table output, each requested section is printed as a separate table. `--by-agent` is JSON-only; session rows are already per-agent. `--all-users` is Linux-only, requires effective UID 0, and is available only for these unified reports. It scans account home defaults, ignores source-specific path overrides and `pi.stores[]`, and continues with warnings when one user/source cannot be read.
+`--sections` accepts a comma-separated list of `daily`, `weekly`, `monthly`, and `session`. The invoked report section is always included. For table output, each requested section is printed as a separate table. `--by-agent` is JSON-only; session rows are already per-agent. `--by-source` is opt-in and applies to Codex-focused reports and unified reports. It adds `sourceBreakdowns` to JSON and source rows to tables while leaving output unchanged when omitted. `--all-users` is Linux-only, requires effective UID 0, and is available only for these unified reports. It scans account home defaults, ignores source-specific path overrides and `pi.stores[]`, and continues with warnings when one user/source cannot be read. The two options can be combined to split Codex usage by both system user and client originator.
 
 ### Daily Command
 

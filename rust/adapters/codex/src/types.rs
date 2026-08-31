@@ -6,6 +6,7 @@ use serde::Deserialize;
 pub struct CodexRawUsage {
     pub(crate) input_tokens: u64,
     pub(crate) cached_input_tokens: u64,
+    pub(crate) cache_creation_tokens: u64,
     pub(crate) output_tokens: u64,
     pub(crate) reasoning_output_tokens: u64,
     pub(crate) total_tokens: u64,
@@ -42,20 +43,24 @@ pub struct CodexTokenUsageEvent {
     pub model: Option<String>,
     pub input_tokens: u64,
     pub cached_input_tokens: u64,
+    pub cache_creation_tokens: u64,
     pub output_tokens: u64,
     pub reasoning_output_tokens: u64,
     pub total_tokens: u64,
     pub is_fallback_model: bool,
     pub service_tier: Option<CodexServiceTier>,
+    pub source: Option<String>,
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct CodexUsageBucket {
     pub input_tokens: u64,
     pub cached_input_tokens: u64,
+    pub cache_creation_tokens: u64,
     pub output_tokens: u64,
     pub long_context_input_tokens: u64,
     pub long_context_cached_input_tokens: u64,
+    pub long_context_cache_creation_tokens: u64,
     pub long_context_output_tokens: u64,
 }
 
@@ -63,6 +68,7 @@ pub struct CodexUsageBucket {
 pub struct CodexModelUsage {
     pub input_tokens: u64,
     pub cached_input_tokens: u64,
+    pub cache_creation_tokens: u64,
     pub output_tokens: u64,
     pub reasoning_output_tokens: u64,
     pub total_tokens: u64,
@@ -73,6 +79,7 @@ pub struct CodexModelUsage {
     // from the summed totals afterwards.
     pub long_context_input_tokens: u64,
     pub long_context_cached_input_tokens: u64,
+    pub long_context_cache_creation_tokens: u64,
     pub long_context_output_tokens: u64,
     pub recorded_standard_usage: CodexUsageBucket,
     pub recorded_fast_usage: CodexUsageBucket,
@@ -80,13 +87,26 @@ pub struct CodexModelUsage {
 }
 
 #[derive(Debug, Clone, Default)]
-pub struct CodexGroup {
+pub struct CodexSourceUsage {
     pub input_tokens: u64,
     pub cached_input_tokens: u64,
+    pub cache_creation_tokens: u64,
     pub output_tokens: u64,
     pub reasoning_output_tokens: u64,
     pub total_tokens: u64,
     pub models: BTreeMap<String, CodexModelUsage>,
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct CodexGroup {
+    pub input_tokens: u64,
+    pub cached_input_tokens: u64,
+    pub cache_creation_tokens: u64,
+    pub output_tokens: u64,
+    pub reasoning_output_tokens: u64,
+    pub total_tokens: u64,
+    pub models: BTreeMap<String, CodexModelUsage>,
+    pub sources: BTreeMap<String, CodexSourceUsage>,
     pub last_activity: Option<String>,
 }
 
@@ -167,6 +187,8 @@ pub(super) struct CodexPayload<'a> {
     pub(super) model: Option<Cow<'a, str>>,
     #[serde(rename = "model_name", borrow, default)]
     pub(super) model_name: Option<Cow<'a, str>>,
+    #[serde(borrow, default)]
+    pub(super) originator: Option<Cow<'a, str>>,
     #[serde(
         borrow,
         default,
@@ -246,6 +268,10 @@ struct CodexRawUsageFields {
     #[serde(default, deserialize_with = "deserialize_optional_u64_lossy")]
     cache_read_input_tokens: Option<u64>,
     #[serde(default, deserialize_with = "deserialize_optional_u64_lossy")]
+    cache_creation_input_tokens: Option<u64>,
+    #[serde(default, deserialize_with = "deserialize_optional_u64_lossy")]
+    cache_write_input_tokens: Option<u64>,
+    #[serde(default, deserialize_with = "deserialize_optional_u64_lossy")]
     cached_tokens: Option<u64>,
     #[serde(default, deserialize_with = "deserialize_optional_u64_lossy")]
     output_tokens: Option<u64>,
@@ -281,13 +307,21 @@ impl<'de> Deserialize<'de> for CodexRawUsage {
             .reasoning_output_tokens
             .or(fields.reasoning_tokens)
             .unwrap_or(0);
+        let cached_input = fields
+            .cached_input_tokens
+            .or(fields.cache_read_input_tokens)
+            .or(fields.cached_tokens)
+            .unwrap_or(0)
+            .min(input);
+        let cache_creation = fields
+            .cache_write_input_tokens
+            .or(fields.cache_creation_input_tokens)
+            .unwrap_or(0)
+            .min(input.saturating_sub(cached_input));
         Ok(Self {
             input_tokens: input,
-            cached_input_tokens: fields
-                .cached_input_tokens
-                .or(fields.cache_read_input_tokens)
-                .or(fields.cached_tokens)
-                .unwrap_or(0),
+            cached_input_tokens: cached_input,
+            cache_creation_tokens: cache_creation,
             output_tokens: output,
             reasoning_output_tokens: reasoning,
             // Codex reports reasoning as a subset of output, so a derived total
@@ -560,6 +594,38 @@ mod tests {
         .expect("usage should deserialize");
 
         assert_eq!(usage.total_tokens, 62);
+    }
+
+    #[test]
+    fn normalizes_cache_reads_and_writes_to_the_reported_input_total() {
+        let usage: CodexRawUsage = serde_json::from_str(
+            r#"{
+                "input_tokens": 100,
+                "cached_input_tokens": 80,
+                "cache_write_input_tokens": 40,
+                "output_tokens": 5,
+                "total_tokens": 105
+            }"#,
+        )
+        .expect("usage should deserialize");
+
+        assert_eq!(usage.cached_input_tokens, 80);
+        assert_eq!(usage.cache_creation_tokens, 20);
+    }
+
+    #[test]
+    fn accepts_the_cache_creation_input_tokens_compatibility_spelling() {
+        let usage: CodexRawUsage = serde_json::from_str(
+            r#"{
+                "input_tokens": 100,
+                "cached_input_tokens": 20,
+                "cache_creation_input_tokens": 30,
+                "output_tokens": 5
+            }"#,
+        )
+        .expect("usage should deserialize");
+
+        assert_eq!(usage.cache_creation_tokens, 30);
     }
 
     #[test]

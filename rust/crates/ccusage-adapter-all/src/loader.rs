@@ -5,6 +5,7 @@ use std::{
     thread,
 };
 
+use ccusage_adapter_codex::{CodexModelUsage, CodexSourceUsage};
 use serde_json::{Value, json};
 
 use crate::{
@@ -176,7 +177,13 @@ fn load_base_rows(
                     "opencode",
                     load_kind,
                     &loader_shared,
-                    || opencode::load_entries_with_pricing(&loader_shared, Some(pricing)),
+                    || {
+                        opencode::load_entries_with_pricing(
+                            &loader_shared,
+                            load_kind,
+                            Some(pricing),
+                        )
+                    },
                     opencode::summarize_entries,
                 )?;
                 // The OpenCode loader narrows to the date window as it reads, so
@@ -750,8 +757,7 @@ fn load_codex_rows(
         });
     }
 
-    let mut events = codex::load_codex_events(shared)?;
-    let detected = !events.is_empty();
+    let (mut events, detected) = codex::load_codex_events_with_detection(shared)?;
     codex::filter_events_by_date(&mut events, shared)?;
     let groups = codex::aggregate_events(&events, kind, shared.timezone.as_deref())?;
     let speed = codex::resolve_codex_speed(CodexSpeed::Auto);
@@ -913,44 +919,107 @@ where
     S: Into<codex::CodexSpeedPolicy> + Copy,
 {
     let speed = speed.into();
-    let mut model_breakdowns: Vec<ModelBreakdown> = group
-        .models
-        .iter()
-        .map(|(model, usage)| {
-            let input =
-                codex::non_cached_input_tokens(usage.input_tokens, usage.cached_input_tokens);
-            ModelBreakdown {
-                model_name: model.clone(),
-                input_tokens: input,
-                output_tokens: usage.output_tokens,
-                cache_creation_tokens: 0,
-                cache_read_tokens: usage.cached_input_tokens,
-                extra_total_tokens: 0,
-                cost: codex::calculate_codex_model_cost(model, usage, pricing, speed),
-                missing_pricing: codex::codex_model_missing_pricing(model, usage, pricing),
-            }
-        })
-        .collect();
-    model_breakdowns.sort_by(|a, b| b.cost.total_cmp(&a.cost));
+    let model_breakdowns = codex_model_breakdowns(&group.models, pricing, speed);
     AllRow {
         period: period.to_string(),
         user: None,
         agent: "codex",
         models_used: group.models.keys().cloned().collect(),
-        input_tokens: codex::non_cached_input_tokens(group.input_tokens, group.cached_input_tokens),
+        input_tokens: codex::non_cached_input_tokens(
+            group.input_tokens,
+            group.cached_input_tokens,
+            group.cache_creation_tokens,
+        ),
         output_tokens: group.output_tokens,
-        cache_creation_tokens: 0,
+        cache_creation_tokens: group.cache_creation_tokens,
         cache_read_tokens: group.cached_input_tokens,
         total_tokens: group.total_tokens,
         total_cost: codex::calculate_group_cost(group, pricing, speed),
         metadata: Some(json!({
             "lastActivity": group.last_activity,
             "reasoningOutputTokens": group.reasoning_output_tokens,
+            "sourceBreakdowns": codex_source_breakdowns(group, pricing, speed),
         })),
         metadata_agents: Some(vec!["codex"]),
         agent_breakdowns: None,
         model_breakdowns,
     }
+}
+
+fn codex_model_breakdowns<S>(
+    models: &BTreeMap<String, CodexModelUsage>,
+    pricing: &PricingMap,
+    speed: S,
+) -> Vec<ModelBreakdown>
+where
+    S: Into<codex::CodexSpeedPolicy> + Copy,
+{
+    let mut breakdowns = models
+        .iter()
+        .map(|(model, usage)| ModelBreakdown {
+            model_name: model.clone(),
+            input_tokens: codex::non_cached_input_tokens(
+                usage.input_tokens,
+                usage.cached_input_tokens,
+                usage.cache_creation_tokens,
+            ),
+            output_tokens: usage.output_tokens,
+            cache_creation_tokens: usage.cache_creation_tokens,
+            cache_read_tokens: usage.cached_input_tokens,
+            extra_total_tokens: 0,
+            cost: codex::calculate_codex_model_cost(model, usage, pricing, speed),
+            missing_pricing: codex::codex_model_missing_pricing(model, usage, pricing),
+        })
+        .collect::<Vec<_>>();
+    breakdowns.sort_by(|a, b| b.cost.total_cmp(&a.cost));
+    breakdowns
+}
+
+fn codex_source_breakdowns<S>(group: &CodexGroup, pricing: &PricingMap, speed: S) -> Value
+where
+    S: Into<codex::CodexSpeedPolicy> + Copy,
+{
+    let sources = if group.sources.is_empty() {
+        let usage = CodexSourceUsage {
+            input_tokens: group.input_tokens,
+            cached_input_tokens: group.cached_input_tokens,
+            cache_creation_tokens: group.cache_creation_tokens,
+            output_tokens: group.output_tokens,
+            reasoning_output_tokens: group.reasoning_output_tokens,
+            total_tokens: group.total_tokens,
+            models: group.models.clone(),
+        };
+        BTreeMap::from([("Uncategorized".to_string(), usage)])
+    } else {
+        group.sources.clone()
+    };
+    Value::Array(
+        sources
+            .iter()
+            .map(|(source, usage)| {
+                json!({
+                    "source": source,
+                    "modelsUsed": usage.models.keys().cloned().collect::<Vec<_>>(),
+                    "inputTokens": codex::non_cached_input_tokens(
+                        usage.input_tokens,
+                        usage.cached_input_tokens,
+                        usage.cache_creation_tokens,
+                    ),
+                    "outputTokens": usage.output_tokens,
+                    "cacheCreationTokens": usage.cache_creation_tokens,
+                    "cacheReadTokens": usage.cached_input_tokens,
+                    "reasoningOutputTokens": usage.reasoning_output_tokens,
+                    "totalTokens": usage.total_tokens,
+                    "totalCost": json_float(codex::calculate_codex_source_cost(
+                        usage,
+                        pricing,
+                        speed,
+                    )),
+                    "modelBreakdowns": codex_model_breakdowns(&usage.models, pricing, speed),
+                })
+            })
+            .collect(),
+    )
 }
 
 pub(super) fn aggregate_rows(rows: Vec<AllRow>, kind: AgentReportKind) -> Vec<AllRow> {
@@ -1065,6 +1134,50 @@ mod tests {
         assert!((focused_cost - 40e-6).abs() < f64::EPSILON);
         assert!((unified.total_cost - focused_cost).abs() < f64::EPSILON);
         assert!((unified.model_breakdowns[0].cost - focused_cost).abs() < f64::EPSILON);
+    }
+
+    #[test]
+    fn unified_row_reports_codex_cache_write_tokens_and_cost() {
+        let pricing = PricingMap::load_embedded();
+        let usage = crate::CodexModelUsage {
+            input_tokens: 935_040,
+            cached_input_tokens: 875_306,
+            cache_creation_tokens: 57_610,
+            output_tokens: 11_150,
+            total_tokens: 946_190,
+            long_context_input_tokens: 935_040,
+            long_context_cached_input_tokens: 875_306,
+            long_context_cache_creation_tokens: 57_610,
+            long_context_output_tokens: 11_150,
+            ..crate::CodexModelUsage::default()
+        };
+        let mut group = CodexGroup {
+            input_tokens: 935_040,
+            cached_input_tokens: 875_306,
+            cache_creation_tokens: 57_610,
+            output_tokens: 11_150,
+            total_tokens: 946_190,
+            ..CodexGroup::default()
+        };
+        group.models.insert("gpt-5.6-terra".to_string(), usage);
+
+        let row = codex_group_row(
+            "2026-08-20",
+            &group,
+            &pricing,
+            codex::CodexSpeedPolicy::Forced(codex::CodexServiceTier::Standard),
+        );
+        let expected_cost =
+            2_124.0 * 4e-6 + 875_306.0 * 0.4e-6 + 57_610.0 * 5e-6 + 11_150.0 * 18e-6;
+
+        assert_eq!(row.input_tokens, 2_124);
+        assert_eq!(row.cache_creation_tokens, 57_610);
+        assert_eq!(row.cache_read_tokens, 875_306);
+        assert!((row.total_cost - expected_cost).abs() < 1e-12);
+        assert_eq!(row.model_breakdowns[0].input_tokens, 2_124);
+        assert_eq!(row.model_breakdowns[0].cache_creation_tokens, 57_610);
+        assert_eq!(row.model_breakdowns[0].cache_read_tokens, 875_306);
+        assert!((row.model_breakdowns[0].cost - expected_cost).abs() < 1e-12);
     }
 
     fn pi_path_subcommand_rows(

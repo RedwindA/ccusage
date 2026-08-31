@@ -38,6 +38,7 @@ pub fn run(args: AgentCommandArgs) -> Result<()> {
     let kind = args.kind;
     let shared = args.shared;
     let include_agents = args.by_agent;
+    let include_sources = args.by_source;
     let users = args
         .all_users
         .then(users::discover_system_users)
@@ -58,21 +59,42 @@ pub fn run(args: AgentCommandArgs) -> Result<()> {
         startup_warnings.extend(result.warnings.iter().cloned());
         print_warnings(startup_warnings);
         if wants_json(&shared) {
-            return report::print_sections_report_json(
-                &result.sections,
-                kind,
-                include_agents,
-                shared.jq.as_deref(),
-                shared.no_cost,
-            );
+            return if include_sources {
+                report::print_sections_report_json_with_options(
+                    &result.sections,
+                    kind,
+                    include_agents,
+                    true,
+                    shared.jq.as_deref(),
+                    shared.no_cost,
+                )
+            } else {
+                report::print_sections_report_json(
+                    &result.sections,
+                    kind,
+                    include_agents,
+                    shared.jq.as_deref(),
+                    shared.no_cost,
+                )
+            };
         }
         for (section_kind, rows) in &result.sections {
-            report::print_table(
-                rows,
-                *section_kind,
-                &shared,
-                result.detected_agents_for(*section_kind),
-            )?;
+            if include_sources {
+                report::print_table_with_options(
+                    rows,
+                    *section_kind,
+                    &shared,
+                    result.detected_agents_for(*section_kind),
+                    true,
+                )?;
+            } else {
+                report::print_table(
+                    rows,
+                    *section_kind,
+                    &shared,
+                    result.detected_agents_for(*section_kind),
+                )?;
+            }
         }
         return Ok(());
     }
@@ -84,10 +106,18 @@ pub fn run(args: AgentCommandArgs) -> Result<()> {
     startup_warnings.extend(result.warnings);
     print_warnings(startup_warnings);
     if wants_json(&shared) {
-        let output = report::report_json_with_agents(&result.rows, kind, include_agents);
+        let output = if include_sources {
+            report::report_json_with_options(&result.rows, kind, include_agents, true)
+        } else {
+            report::report_json_with_agents(&result.rows, kind, include_agents)
+        };
         return print_json_or_jq(output, shared.jq.as_deref(), shared.no_cost);
     }
-    report::print_table(&result.rows, kind, &shared, &result.detected_agents)
+    if include_sources {
+        report::print_table_with_options(&result.rows, kind, &shared, &result.detected_agents, true)
+    } else {
+        report::print_table(&result.rows, kind, &shared, &result.detected_agents)
+    }
 }
 
 fn ignored_custom_source_warning(shared: &crate::cli::SharedArgs) -> Option<String> {
@@ -160,7 +190,7 @@ use loader::{
 #[cfg(test)]
 use report::{
     all_report_title, all_table_columns, all_table_columns_with_users, all_table_row, report_json,
-    report_json_with_agents, sections_report_json,
+    report_json_with_agents, report_json_with_options, sections_report_json, source_table_row,
 };
 #[cfg(test)]
 use types::{AgentLoadSpec, AgentRows, AllRow};

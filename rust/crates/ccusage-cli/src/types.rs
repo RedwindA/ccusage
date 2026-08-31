@@ -166,6 +166,7 @@ pub struct StatuslineArgs {
     pub config: Option<PathBuf>,
     pub debug: bool,
     pub model_label_aliases: HashMap<String, String>,
+    pub pricing_overrides: BTreeMap<String, PricingOverride>,
 }
 
 #[derive(Clone)]
@@ -175,6 +176,7 @@ pub struct AgentCommandArgs {
     pub sections: Option<Vec<AgentReportKind>>,
     pub by_agent: bool,
     pub all_users: bool,
+    pub by_source: bool,
     pub pi_path: Option<String>,
     pub open_claw_path: Option<String>,
     pub codex_speed: CodexSpeed,
@@ -243,6 +245,7 @@ impl Default for StatuslineArgs {
             config: None,
             debug: false,
             model_label_aliases: HashMap::new(),
+            pricing_overrides: BTreeMap::new(),
         }
     }
 }
@@ -321,6 +324,7 @@ pub trait CliConfig {
     fn apply_agent_args(
         &self,
         _codex_speed: &mut CodexSpeed,
+        _by_source: Option<&mut bool>,
         _pi_path: Option<&mut Option<String>>,
         _open_claw_path: Option<&mut Option<String>>,
     ) {

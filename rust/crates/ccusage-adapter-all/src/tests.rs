@@ -1,11 +1,13 @@
 use std::{
     ffi::OsString,
+    fs::{File, FileTimes},
+    path::Path,
     sync::{
         Arc,
         atomic::{AtomicUsize, Ordering},
     },
     thread,
-    time::{Duration, Instant},
+    time::{Duration, Instant, UNIX_EPOCH},
 };
 
 use serde_json::json;
@@ -16,6 +18,7 @@ use crate::{
     cli::{AgentReportKind, CodexSpeed, SharedArgs},
     model_aliases::set_model_aliases_for_tests,
 };
+use ccusage_adapter_codex::CodexSourceUsage;
 use ccusage_test_support::{EnvVarsGuard, fs_fixture};
 
 fn test_agent_rows(agent: &'static str) -> AgentRows {
@@ -435,6 +438,153 @@ fn renders_all_report_json_with_period_and_agent_metadata() {
 }
 
 #[test]
+fn renders_opt_in_codex_source_breakdowns_in_unified_json_and_table_rows() {
+    let model_usage = |input_tokens: u64, output_tokens: u64, total_tokens: u64| CodexModelUsage {
+        input_tokens,
+        output_tokens,
+        total_tokens,
+        ..CodexModelUsage::default()
+    };
+    let cli_usage = CodexSourceUsage {
+        input_tokens: 100,
+        output_tokens: 10,
+        total_tokens: 110,
+        models: std::collections::BTreeMap::from([(
+            "gpt-5".to_string(),
+            model_usage(100, 10, 110),
+        )]),
+        ..CodexSourceUsage::default()
+    };
+    let exec_usage = CodexSourceUsage {
+        input_tokens: 50,
+        output_tokens: 5,
+        total_tokens: 55,
+        models: std::collections::BTreeMap::from([("gpt-5".to_string(), model_usage(50, 5, 55))]),
+        ..CodexSourceUsage::default()
+    };
+    let group = CodexGroup {
+        input_tokens: 150,
+        output_tokens: 15,
+        total_tokens: 165,
+        models: std::collections::BTreeMap::from([(
+            "gpt-5".to_string(),
+            model_usage(150, 15, 165),
+        )]),
+        sources: std::collections::BTreeMap::from([
+            ("CLI".to_string(), cli_usage),
+            ("Exec".to_string(), exec_usage),
+        ]),
+        ..CodexGroup::default()
+    };
+    let row = codex_group_row(
+        "2026-01-02",
+        &group,
+        &PricingMap::default(),
+        CodexSpeed::Standard,
+    );
+    let default = report_json(std::slice::from_ref(&row), AgentReportKind::Daily);
+    let report = report_json_with_options(&[row], AgentReportKind::Daily, false, true);
+
+    assert!(default["daily"][0].get("sourceBreakdowns").is_none());
+    let sources = report["daily"][0]["sourceBreakdowns"].as_array().unwrap();
+    assert_eq!(sources.len(), 2);
+    assert_eq!(sources[0]["source"], "CLI");
+    assert_eq!(sources[1]["source"], "Exec");
+    assert_eq!(
+        sources
+            .iter()
+            .map(|source| source["totalTokens"].as_u64().unwrap())
+            .sum::<u64>(),
+        report["daily"][0]["totalTokens"].as_u64().unwrap()
+    );
+    let monthly_rows = aggregate_rows(
+        vec![
+            codex_group_row(
+                "2026-01-02",
+                &group,
+                &PricingMap::default(),
+                CodexSpeed::Standard,
+            ),
+            codex_group_row(
+                "2026-01-03",
+                &group,
+                &PricingMap::default(),
+                CodexSpeed::Standard,
+            ),
+        ],
+        AgentReportKind::Monthly,
+    );
+    let monthly_report =
+        report_json_with_options(&monthly_rows, AgentReportKind::Monthly, false, true);
+    let monthly_sources = monthly_report["monthly"][0]["sourceBreakdowns"]
+        .as_array()
+        .unwrap();
+    assert_eq!(monthly_sources[0]["totalTokens"], 220);
+    assert_eq!(monthly_sources[1]["totalTokens"], 110);
+    assert_eq!(monthly_report["monthly"][0]["totalTokens"], 330);
+    insta::assert_json_snapshot!(report);
+    insta::assert_debug_snapshot!(source_table_row(&sources[0], false, false, false));
+}
+
+#[test]
+fn sanitizes_unknown_codex_source_only_in_unified_table_rows() {
+    let source = "future\nclient\u{1b}[31m";
+    let value = json!({
+        "source": source,
+        "modelsUsed": [],
+        "inputTokens": 0,
+        "outputTokens": 0,
+        "cacheCreationTokens": 0,
+        "cacheReadTokens": 0,
+        "totalCost": 0.0,
+    });
+
+    assert_eq!(
+        source_table_row(&value, false, false, false)[1],
+        r#"- future\nclient\u{1b}[31m"#
+    );
+    let row = AllRow {
+        user: None,
+        period: "2026-08-20".to_string(),
+        agent: "codex",
+        models_used: Vec::new(),
+        input_tokens: 0,
+        output_tokens: 0,
+        cache_creation_tokens: 0,
+        cache_read_tokens: 0,
+        total_tokens: 0,
+        total_cost: 0.0,
+        metadata: Some(json!({ "sourceBreakdowns": [value] })),
+        metadata_agents: Some(vec!["codex"]),
+        agent_breakdowns: None,
+        model_breakdowns: Vec::new(),
+    };
+    let report = report_json_with_options(&[row], AgentReportKind::Daily, false, true);
+
+    assert_eq!(report["daily"][0]["sourceBreakdowns"][0]["source"], source);
+}
+
+#[test]
+fn source_table_rows_reserve_the_all_users_column() {
+    let source = json!({
+        "source": "CLI",
+        "modelsUsed": ["gpt-5"],
+        "inputTokens": 10,
+        "outputTokens": 2,
+        "cacheCreationTokens": 0,
+        "cacheReadTokens": 1,
+        "totalCost": 0.01,
+    });
+
+    let row = source_table_row(&source, false, true, false);
+    let (headers, _) = all_table_columns_with_users(AgentReportKind::Daily, false, false, true);
+
+    assert_eq!(row.len(), headers.len());
+    assert_eq!(row[1], "");
+    assert_eq!(row[2], "- CLI");
+}
+
+#[test]
 fn renders_by_agent_json_breakdowns_when_requested() {
     let rows = vec![AllRow {
         user: None,
@@ -683,6 +833,47 @@ fn multi_section_codex_fixture_matches_standalone_sections_for_daily_and_session
     assert_daily_family_and_session_sections_match_standalone(&shared);
 }
 
+#[test]
+fn unified_report_filters_codex_paths_before_loading_historical_rows() {
+    let resumed_usage = codex_usage_line("2026-03-15T08:01:00.000Z", "gpt-5", 1_000);
+    let historical_usage = codex_usage_line("2026-03-15T08:02:00.000Z", "gpt-5", 9_999);
+    let fixture = fs_fixture!({
+        "codex/sessions/2025/01/01/resumed.jsonl": &resumed_usage,
+        "codex/sessions/2025/01/02/historical.jsonl": &historical_usage,
+    });
+    set_file_modified(
+        &fixture.path("codex/sessions/2025/01/01/resumed.jsonl"),
+        "2026-03-15T08:01:00.000Z",
+    );
+    set_file_modified(
+        &fixture.path("codex/sessions/2025/01/02/historical.jsonl"),
+        "2025-01-02T08:01:00.000Z",
+    );
+    let _env = isolated_agent_env(
+        &fixture,
+        "CODEX_HOME",
+        fixture.path("codex").into_os_string(),
+    );
+    let shared = fixture_shared("20260315", "20260315");
+
+    let result = load_rows(AgentReportKind::Daily, &shared).unwrap();
+
+    assert_eq!(result.rows.len(), 1);
+    assert_eq!(result.rows[0].period, "2026-03-15");
+    assert_eq!(result.rows[0].total_tokens, 1_300);
+    assert_eq!(result.detected_agents, vec!["codex"]);
+}
+
+fn set_file_modified(path: &Path, timestamp: &str) {
+    let milliseconds = u64::try_from(parse_ts_timestamp(timestamp).unwrap().as_millis()).unwrap();
+    File::options()
+        .write(true)
+        .open(path)
+        .unwrap()
+        .set_times(FileTimes::new().set_modified(UNIX_EPOCH + Duration::from_millis(milliseconds)))
+        .unwrap();
+}
+
 fn fixture_shared(since: &str, until: &str) -> SharedArgs {
     SharedArgs {
         since: Some(since.to_string()),
@@ -831,7 +1022,8 @@ fn codex_usage_line(timestamp: &str, model: &str, input_tokens: u64) -> String {
 fn uses_non_cached_codex_input_tokens_in_all_rows() {
     let mut group = CodexGroup {
         input_tokens: 100,
-        cached_input_tokens: 90,
+        cached_input_tokens: 70,
+        cache_creation_tokens: 20,
         output_tokens: 5,
         total_tokens: 105,
         ..CodexGroup::default()
@@ -840,7 +1032,8 @@ fn uses_non_cached_codex_input_tokens_in_all_rows() {
         "gpt-5".to_string(),
         CodexModelUsage {
             input_tokens: 100,
-            cached_input_tokens: 90,
+            cached_input_tokens: 70,
+            cache_creation_tokens: 20,
             output_tokens: 5,
             total_tokens: 105,
             ..CodexModelUsage::default()
@@ -854,7 +1047,8 @@ fn uses_non_cached_codex_input_tokens_in_all_rows() {
     );
 
     assert_eq!(row.input_tokens, 10);
-    assert_eq!(row.cache_read_tokens, 90);
+    assert_eq!(row.cache_creation_tokens, 20);
+    assert_eq!(row.cache_read_tokens, 70);
     assert_eq!(row.total_tokens, 105);
 }
 

@@ -3,12 +3,12 @@ use std::collections::{BTreeMap, BTreeSet};
 use serde_json::{Value, json};
 
 use crate::{
-    Align, CodexGroup, CodexModelUsage, CodexServiceTier, CodexUsageBucket, Color, DimensionRow,
-    ModelBreakdown, PricingMap, Result, SimpleTable,
+    Align, CodexGroup, CodexModelUsage, CodexServiceTier, CodexSourceUsage, CodexUsageBucket,
+    Color, DimensionRow, ModelBreakdown, PricingMap, Result, SimpleTable,
     cli::{AgentReportKind, SharedArgs, SortOrder},
     color, format_currency, format_models_multiline, format_number, json_float,
     missing_pricing_model_for_token_total, print_box_title,
-    print_missing_pricing_warnings_for_models,
+    print_missing_pricing_warnings_for_models, sanitize_terminal_text,
 };
 
 use super::speed::CodexSpeedPolicy;
@@ -19,11 +19,21 @@ pub(super) fn report_from_groups(
     pricing: &PricingMap,
     speed: CodexSpeedPolicy,
 ) -> Value {
+    report_from_groups_with_source(groups, kind, pricing, speed, false)
+}
+
+pub(super) fn report_from_groups_with_source(
+    groups: &BTreeMap<String, CodexGroup>,
+    kind: AgentReportKind,
+    pricing: &PricingMap,
+    speed: CodexSpeedPolicy,
+    by_source: bool,
+) -> Value {
     let rows = groups
         .iter()
-        .map(|(period, group)| group_json(period, group, kind, pricing, speed))
+        .map(|(period, group)| group_json(period, group, kind, pricing, speed, by_source))
         .collect::<Vec<_>>();
-    let totals = totals_json(groups.values(), pricing, speed);
+    let totals = totals_json(groups.values(), pricing, speed, by_source);
     json!({
         rows_key(kind): rows,
         "totals": totals,
@@ -54,9 +64,14 @@ fn group_json(
     kind: AgentReportKind,
     pricing: &PricingMap,
     speed: CodexSpeedPolicy,
+    by_source: bool,
 ) -> Value {
     let cost = calculate_group_cost(group, pricing, speed);
-    let input_tokens = non_cached_input_tokens(group.input_tokens, group.cached_input_tokens);
+    let input_tokens = non_cached_input_tokens(
+        group.input_tokens,
+        group.cached_input_tokens,
+        group.cache_creation_tokens,
+    );
     let models = group
         .models
         .iter()
@@ -65,7 +80,7 @@ fn group_json(
     let mut row = json!({
         period_key(kind): period,
         "inputTokens": input_tokens,
-        "cacheCreationTokens": 0,
+        "cacheCreationTokens": group.cache_creation_tokens,
         "cacheReadTokens": group.cached_input_tokens,
         "outputTokens": group.output_tokens,
         "reasoningOutputTokens": group.reasoning_output_tokens,
@@ -79,17 +94,28 @@ fn group_json(
         row["sessionFile"] = json!(separator.map_or(period, |index| &period[index + 1..]));
         row["directory"] = json!(separator.map_or("", |index| &period[..index]));
     }
+    if by_source {
+        row["sourceBreakdowns"] = source_breakdowns_json(group, pricing, speed);
+    }
     row
 }
 
-pub fn non_cached_input_tokens(input_tokens: u64, cached_input_tokens: u64) -> u64 {
-    input_tokens.saturating_sub(cached_input_tokens)
+pub fn non_cached_input_tokens(
+    input_tokens: u64,
+    cached_input_tokens: u64,
+    cache_creation_tokens: u64,
+) -> u64 {
+    input_tokens.saturating_sub(cached_input_tokens.saturating_add(cache_creation_tokens))
 }
 
 fn model_usage_json(usage: &CodexModelUsage) -> Value {
     json!({
-        "inputTokens": non_cached_input_tokens(usage.input_tokens, usage.cached_input_tokens),
-        "cacheCreationTokens": 0,
+        "inputTokens": non_cached_input_tokens(
+            usage.input_tokens,
+            usage.cached_input_tokens,
+            usage.cache_creation_tokens,
+        ),
+        "cacheCreationTokens": usage.cache_creation_tokens,
         "cacheReadTokens": usage.cached_input_tokens,
         "outputTokens": usage.output_tokens,
         "reasoningOutputTokens": usage.reasoning_output_tokens,
@@ -102,30 +128,156 @@ fn totals_json<'a>(
     groups: impl Iterator<Item = &'a CodexGroup>,
     pricing: &PricingMap,
     speed: CodexSpeedPolicy,
+    by_source: bool,
 ) -> Value {
     let mut input = 0;
     let mut cached = 0;
+    let mut creation = 0;
     let mut output = 0;
     let mut reasoning = 0;
     let mut total = 0;
     let mut cost = 0.0;
+    let mut source_groups = BTreeMap::<String, CodexSourceUsage>::new();
     for group in groups {
-        input += non_cached_input_tokens(group.input_tokens, group.cached_input_tokens);
+        input += non_cached_input_tokens(
+            group.input_tokens,
+            group.cached_input_tokens,
+            group.cache_creation_tokens,
+        );
         cached += group.cached_input_tokens;
+        creation += group.cache_creation_tokens;
         output += group.output_tokens;
         reasoning += group.reasoning_output_tokens;
         total += group.total_tokens;
         cost += calculate_group_cost(group, pricing, speed);
+        if by_source {
+            let sources = source_groups_for_group(group);
+            merge_source_groups(&mut source_groups, &sources);
+        }
     }
-    json!({
+    let mut totals = json!({
         "inputTokens": input,
-        "cacheCreationTokens": 0,
+        "cacheCreationTokens": creation,
         "cacheReadTokens": cached,
         "outputTokens": output,
         "reasoningOutputTokens": reasoning,
         "totalTokens": total,
         "costUSD": json_float(cost),
-    })
+    });
+    if by_source {
+        totals["sourceBreakdowns"] = source_breakdowns_from_sources(&source_groups, pricing, speed);
+    }
+    totals
+}
+
+fn source_breakdowns_json(
+    group: &CodexGroup,
+    pricing: &PricingMap,
+    speed: CodexSpeedPolicy,
+) -> Value {
+    let sources = source_groups_for_group(group);
+    source_breakdowns_from_sources(&sources, pricing, speed)
+}
+
+fn source_groups_for_group(group: &CodexGroup) -> BTreeMap<String, CodexSourceUsage> {
+    if !group.sources.is_empty() {
+        return group.sources.clone();
+    }
+    BTreeMap::from([(
+        crate::source::CODEX_UNCATEGORIZED_SOURCE.to_string(),
+        CodexSourceUsage {
+            input_tokens: group.input_tokens,
+            cached_input_tokens: group.cached_input_tokens,
+            cache_creation_tokens: group.cache_creation_tokens,
+            output_tokens: group.output_tokens,
+            reasoning_output_tokens: group.reasoning_output_tokens,
+            total_tokens: group.total_tokens,
+            models: group.models.clone(),
+        },
+    )])
+}
+
+fn source_breakdowns_from_sources(
+    sources: &BTreeMap<String, CodexSourceUsage>,
+    pricing: &PricingMap,
+    speed: CodexSpeedPolicy,
+) -> Value {
+    Value::Array(
+        sources
+            .iter()
+            .map(|(source, usage)| {
+                let models = usage
+                    .models
+                    .iter()
+                    .map(|(model, usage)| (model.clone(), model_usage_json(usage)))
+                    .collect::<BTreeMap<_, _>>();
+                json!({
+                    "source": source,
+                    "inputTokens": non_cached_input_tokens(
+                        usage.input_tokens,
+                        usage.cached_input_tokens,
+                        usage.cache_creation_tokens,
+                    ),
+                    "cacheCreationTokens": usage.cache_creation_tokens,
+                    "cacheReadTokens": usage.cached_input_tokens,
+                    "outputTokens": usage.output_tokens,
+                    "reasoningOutputTokens": usage.reasoning_output_tokens,
+                    "totalTokens": usage.total_tokens,
+                    "costUSD": json_float(calculate_codex_source_cost(usage, pricing, speed)),
+                    "models": models,
+                })
+            })
+            .collect(),
+    )
+}
+
+fn merge_source_groups(
+    target: &mut BTreeMap<String, CodexSourceUsage>,
+    source: &BTreeMap<String, CodexSourceUsage>,
+) {
+    for (source_name, source_usage) in source {
+        let target_usage = target.entry(source_name.clone()).or_default();
+        target_usage.input_tokens += source_usage.input_tokens;
+        target_usage.cached_input_tokens += source_usage.cached_input_tokens;
+        target_usage.cache_creation_tokens += source_usage.cache_creation_tokens;
+        target_usage.output_tokens += source_usage.output_tokens;
+        target_usage.reasoning_output_tokens += source_usage.reasoning_output_tokens;
+        target_usage.total_tokens += source_usage.total_tokens;
+        for (model, usage) in &source_usage.models {
+            let target_model = target_usage.models.entry(model.clone()).or_default();
+            merge_model_usage(target_model, usage);
+        }
+    }
+}
+
+fn merge_model_usage(target: &mut CodexModelUsage, source: &CodexModelUsage) {
+    target.input_tokens += source.input_tokens;
+    target.cached_input_tokens += source.cached_input_tokens;
+    target.cache_creation_tokens += source.cache_creation_tokens;
+    target.output_tokens += source.output_tokens;
+    target.reasoning_output_tokens += source.reasoning_output_tokens;
+    target.total_tokens += source.total_tokens;
+    target.long_context_input_tokens += source.long_context_input_tokens;
+    target.long_context_cached_input_tokens += source.long_context_cached_input_tokens;
+    target.long_context_cache_creation_tokens += source.long_context_cache_creation_tokens;
+    target.long_context_output_tokens += source.long_context_output_tokens;
+    merge_usage_bucket(
+        &mut target.recorded_standard_usage,
+        &source.recorded_standard_usage,
+    );
+    merge_usage_bucket(&mut target.recorded_fast_usage, &source.recorded_fast_usage);
+    target.is_fallback |= source.is_fallback;
+}
+
+fn merge_usage_bucket(target: &mut CodexUsageBucket, source: &CodexUsageBucket) {
+    target.input_tokens += source.input_tokens;
+    target.cached_input_tokens += source.cached_input_tokens;
+    target.cache_creation_tokens += source.cache_creation_tokens;
+    target.output_tokens += source.output_tokens;
+    target.long_context_input_tokens += source.long_context_input_tokens;
+    target.long_context_cached_input_tokens += source.long_context_cached_input_tokens;
+    target.long_context_cache_creation_tokens += source.long_context_cache_creation_tokens;
+    target.long_context_output_tokens += source.long_context_output_tokens;
 }
 
 pub fn calculate_codex_model_cost(
@@ -155,9 +307,11 @@ fn model_usage_bucket(usage: &CodexModelUsage) -> CodexUsageBucket {
     CodexUsageBucket {
         input_tokens: usage.input_tokens,
         cached_input_tokens: usage.cached_input_tokens,
+        cache_creation_tokens: usage.cache_creation_tokens,
         output_tokens: usage.output_tokens,
         long_context_input_tokens: usage.long_context_input_tokens,
         long_context_cached_input_tokens: usage.long_context_cached_input_tokens,
+        long_context_cache_creation_tokens: usage.long_context_cache_creation_tokens,
         long_context_output_tokens: usage.long_context_output_tokens,
     }
 }
@@ -171,6 +325,9 @@ fn subtract_codex_usage_bucket(
         cached_input_tokens: total
             .cached_input_tokens
             .saturating_sub(excluded.cached_input_tokens),
+        cache_creation_tokens: total
+            .cache_creation_tokens
+            .saturating_sub(excluded.cache_creation_tokens),
         output_tokens: total.output_tokens.saturating_sub(excluded.output_tokens),
         long_context_input_tokens: total
             .long_context_input_tokens
@@ -178,6 +335,9 @@ fn subtract_codex_usage_bucket(
         long_context_cached_input_tokens: total
             .long_context_cached_input_tokens
             .saturating_sub(excluded.long_context_cached_input_tokens),
+        long_context_cache_creation_tokens: total
+            .long_context_cache_creation_tokens
+            .saturating_sub(excluded.long_context_cache_creation_tokens),
         long_context_output_tokens: total
             .long_context_output_tokens
             .saturating_sub(excluded.long_context_output_tokens),
@@ -190,6 +350,7 @@ fn calculate_codex_bucket_cost(usage: &CodexUsageBucket, pricing: &crate::Pricin
     } else {
         pricing.input
     };
+    let cache_creation = pricing.cache_creation_input_token_cost();
     // OpenAI bills every token of a long-context request (input above 272K
     // tokens) at the long-context rates, so the aggregated usage is priced as
     // two independent buckets. Models without long-context rates fall back to
@@ -201,20 +362,36 @@ fn calculate_codex_bucket_cost(usage: &CodexUsageBucket, pricing: &crate::Pricin
     } else {
         long_input_rate
     };
+    let long_cache_creation_rate = pricing
+        .cache_creation_input_token_cost_above_200k_tokens()
+        .unwrap_or(cache_creation);
     let long_input = usage.long_context_input_tokens.min(usage.input_tokens);
     let long_cached = usage
         .long_context_cached_input_tokens
         .min(usage.cached_input_tokens)
         .min(long_input);
+    let long_cache_creation = usage
+        .long_context_cache_creation_tokens
+        .min(usage.cache_creation_tokens)
+        .min(long_input.saturating_sub(long_cached));
     let long_output = usage.long_context_output_tokens.min(usage.output_tokens);
-    let short_non_cached =
-        (usage.input_tokens - long_input).saturating_sub(usage.cached_input_tokens - long_cached);
-    let long_non_cached = long_input - long_cached;
+    let short_cached = usage.cached_input_tokens.saturating_sub(long_cached);
+    let short_cache_creation = usage
+        .cache_creation_tokens
+        .saturating_sub(long_cache_creation);
+    let short_non_cached = usage
+        .input_tokens
+        .saturating_sub(long_input)
+        .saturating_sub(short_cached.saturating_add(short_cache_creation));
+    let long_non_cached =
+        long_input.saturating_sub(long_cached.saturating_add(long_cache_creation));
     short_non_cached as f64 * pricing.input
-        + (usage.cached_input_tokens - long_cached) as f64 * cache_read
+        + short_cached as f64 * cache_read
+        + short_cache_creation as f64 * cache_creation
         + (usage.output_tokens - long_output) as f64 * pricing.output
         + long_non_cached as f64 * long_input_rate
         + long_cached as f64 * long_cache_read
+        + long_cache_creation as f64 * long_cache_creation_rate
         + long_output as f64 * long_output_rate
 }
 
@@ -224,6 +401,22 @@ where
 {
     let speed = speed.into();
     group
+        .models
+        .iter()
+        .map(|(model, usage)| calculate_codex_model_cost(model, usage, pricing, speed))
+        .sum()
+}
+
+pub fn calculate_codex_source_cost<S>(
+    source: &CodexSourceUsage,
+    pricing: &PricingMap,
+    speed: S,
+) -> f64
+where
+    S: Into<CodexSpeedPolicy> + Copy,
+{
+    let speed = speed.into();
+    source
         .models
         .iter()
         .map(|(model, usage)| calculate_codex_model_cost(model, usage, pricing, speed))
@@ -258,16 +451,22 @@ pub(super) fn dimension_rows_from_groups(
                 .models
                 .iter()
                 .map(|(model, usage)| {
-                    let input_tokens =
-                        non_cached_input_tokens(usage.input_tokens, usage.cached_input_tokens);
+                    let input_tokens = non_cached_input_tokens(
+                        usage.input_tokens,
+                        usage.cached_input_tokens,
+                        usage.cache_creation_tokens,
+                    );
                     ModelBreakdown {
                         model_name: model.clone(),
                         input_tokens,
                         output_tokens: usage.output_tokens,
-                        cache_creation_tokens: 0,
+                        cache_creation_tokens: usage.cache_creation_tokens,
                         cache_read_tokens: usage.cached_input_tokens,
                         extra_total_tokens: usage.total_tokens.saturating_sub(
-                            input_tokens + usage.cached_input_tokens + usage.output_tokens,
+                            input_tokens
+                                + usage.cached_input_tokens
+                                + usage.cache_creation_tokens
+                                + usage.output_tokens,
                         ),
                         cost: calculate_codex_model_cost(model, usage, pricing, speed),
                         missing_pricing: codex_model_missing_pricing(model, usage, pricing),
@@ -281,17 +480,23 @@ pub(super) fn dimension_rows_from_groups(
             });
             let mut models_used = group.models.keys().cloned().collect::<Vec<_>>();
             models_used.sort();
-            let input_tokens =
-                non_cached_input_tokens(group.input_tokens, group.cached_input_tokens);
+            let input_tokens = non_cached_input_tokens(
+                group.input_tokens,
+                group.cached_input_tokens,
+                group.cache_creation_tokens,
+            );
             DimensionRow {
                 key: key.clone(),
                 input_tokens,
                 output_tokens: group.output_tokens,
-                cache_creation_tokens: 0,
+                cache_creation_tokens: group.cache_creation_tokens,
                 cache_read_tokens: group.cached_input_tokens,
-                extra_total_tokens: group
-                    .total_tokens
-                    .saturating_sub(input_tokens + group.cached_input_tokens + group.output_tokens),
+                extra_total_tokens: group.total_tokens.saturating_sub(
+                    input_tokens
+                        + group.cached_input_tokens
+                        + group.cache_creation_tokens
+                        + group.output_tokens,
+                ),
                 total_cost: calculate_group_cost(group, pricing, speed),
                 models_used,
                 model_breakdowns,
@@ -324,12 +529,163 @@ pub fn codex_missing_pricing_models(
     models.into_iter().collect()
 }
 
+fn codex_table_columns(
+    first_column: &'static str,
+    no_cost: bool,
+) -> (Vec<&'static str>, Vec<Align>) {
+    let mut headers = vec![
+        first_column,
+        "Models",
+        "Input",
+        "Output",
+        "Reasoning",
+        "Cache Create",
+        "Cache Read",
+        "Total Tokens",
+        "Cost (USD)",
+    ];
+    let mut aligns = vec![
+        Align::Left,
+        Align::Left,
+        Align::Right,
+        Align::Right,
+        Align::Right,
+        Align::Right,
+        Align::Right,
+        Align::Right,
+        Align::Right,
+    ];
+    if no_cost {
+        headers.pop();
+        aligns.pop();
+    }
+    (headers, aligns)
+}
+
+fn codex_table_row(
+    label: &str,
+    kind: AgentReportKind,
+    group: &CodexGroup,
+    pricing: &PricingMap,
+    speed: CodexSpeedPolicy,
+    no_cost: bool,
+    terminal_width: usize,
+) -> (Vec<String>, u64, f64) {
+    let input_tokens = non_cached_input_tokens(
+        group.input_tokens,
+        group.cached_input_tokens,
+        group.cache_creation_tokens,
+    );
+    let cost = calculate_group_cost(group, pricing, speed);
+    let models = format_models_multiline(&group.models.keys().cloned().collect::<Vec<_>>());
+    let mut row = vec![
+        codex_table_label(label, kind, terminal_width),
+        models,
+        format_number(input_tokens),
+        format_number(group.output_tokens),
+        format_number(group.reasoning_output_tokens),
+        format_number(group.cache_creation_tokens),
+        format_number(group.cached_input_tokens),
+        format_number(group.total_tokens),
+        format_currency(cost),
+    ];
+    if no_cost {
+        row.pop();
+    }
+    (row, input_tokens, cost)
+}
+
+fn codex_table_label(label: &str, kind: AgentReportKind, terminal_width: usize) -> String {
+    let label = sanitize_terminal_text(label);
+    if matches!(kind, AgentReportKind::Daily) && terminal_width <= 120 {
+        let bytes = label.as_bytes();
+        if bytes.len() == 10
+            && bytes[4] == b'-'
+            && bytes[7] == b'-'
+            && bytes[..4].iter().all(u8::is_ascii_digit)
+            && bytes[5..7].iter().all(u8::is_ascii_digit)
+            && bytes[8..10].iter().all(u8::is_ascii_digit)
+        {
+            return format!("{}\n{}", &label[..4], &label[5..]);
+        }
+    }
+    label
+}
+
+#[derive(Default)]
+struct CodexTableTotals {
+    input_tokens: u64,
+    cache_creation_tokens: u64,
+    cached_input_tokens: u64,
+    output_tokens: u64,
+    reasoning_output_tokens: u64,
+    total_tokens: u64,
+    cost: f64,
+}
+
+impl CodexTableTotals {
+    fn add(&mut self, group: &CodexGroup, input_tokens: u64, cost: f64) {
+        self.input_tokens += input_tokens;
+        self.cache_creation_tokens += group.cache_creation_tokens;
+        self.cached_input_tokens += group.cached_input_tokens;
+        self.output_tokens += group.output_tokens;
+        self.reasoning_output_tokens += group.reasoning_output_tokens;
+        self.total_tokens += group.total_tokens;
+        self.cost += cost;
+    }
+}
+
+fn codex_table_total_row(
+    totals: &CodexTableTotals,
+    shared: &SharedArgs,
+    no_cost: bool,
+) -> Vec<String> {
+    let mut row = vec![
+        color(shared, "Total", Color::Yellow),
+        String::new(),
+        color(shared, format_number(totals.input_tokens), Color::Yellow),
+        color(shared, format_number(totals.output_tokens), Color::Yellow),
+        color(
+            shared,
+            format_number(totals.reasoning_output_tokens),
+            Color::Yellow,
+        ),
+        color(
+            shared,
+            format_number(totals.cache_creation_tokens),
+            Color::Yellow,
+        ),
+        color(
+            shared,
+            format_number(totals.cached_input_tokens),
+            Color::Yellow,
+        ),
+        color(shared, format_number(totals.total_tokens), Color::Yellow),
+        color(shared, format_currency(totals.cost), Color::Yellow),
+    ];
+    if no_cost {
+        row.pop();
+    }
+    row
+}
+
 pub(super) fn print_table_from_groups(
     groups: &BTreeMap<String, CodexGroup>,
     kind: AgentReportKind,
     pricing: &PricingMap,
     speed: CodexSpeedPolicy,
     shared: &SharedArgs,
+) -> Result<()> {
+    print_table_from_groups_with_source(groups, kind, pricing, speed, shared, false)
+}
+
+pub(super) fn print_table_from_groups_with_source(
+    groups: &BTreeMap<String, CodexGroup>,
+    kind: AgentReportKind,
+    pricing: &PricingMap,
+    speed: CodexSpeedPolicy,
+    shared: &SharedArgs,
+    by_source: bool,
 ) -> Result<()> {
     if groups.is_empty() {
         eprintln!("No Codex usage data found.");
@@ -353,79 +709,52 @@ pub(super) fn print_table_from_groups(
         ),
         shared,
     );
-    let mut headers = vec![
-        first_column,
-        "Models",
-        "Input",
-        "Output",
-        "Reasoning",
-        "Cache Read",
-        "Total Tokens",
-        "Cost (USD)",
-    ];
-    let mut aligns = vec![
-        Align::Left,
-        Align::Left,
-        Align::Right,
-        Align::Right,
-        Align::Right,
-        Align::Right,
-        Align::Right,
-        Align::Right,
-    ];
-    if shared.no_cost {
-        headers.pop();
-        aligns.pop();
-    }
+    let terminal_width = crate::terminal_width();
+    let (headers, aligns) = codex_table_columns(first_column, shared.no_cost);
     let mut table = SimpleTable::new(headers, aligns, crate::terminal_style(shared))
-        .with_terminal_width(crate::terminal_width())
+        .with_terminal_width(terminal_width)
         .with_date_compaction(true);
-    let mut total_input = 0;
-    let mut total_cached = 0;
-    let mut total_output = 0;
-    let mut total_reasoning = 0;
-    let mut total_tokens = 0;
-    let mut total_cost = 0.0;
+    let mut totals = CodexTableTotals::default();
     for (label, group) in groups {
-        let input_tokens = non_cached_input_tokens(group.input_tokens, group.cached_input_tokens);
-        let cost = calculate_group_cost(group, pricing, speed);
-        total_input += input_tokens;
-        total_cached += group.cached_input_tokens;
-        total_output += group.output_tokens;
-        total_reasoning += group.reasoning_output_tokens;
-        total_tokens += group.total_tokens;
-        total_cost += cost;
-        let models = format_models_multiline(&group.models.keys().cloned().collect::<Vec<_>>());
-        let mut row = vec![
-            label.clone(),
-            models,
-            format_number(input_tokens),
-            format_number(group.output_tokens),
-            format_number(group.reasoning_output_tokens),
-            format_number(group.cached_input_tokens),
-            format_number(group.total_tokens),
-            format_currency(cost),
-        ];
-        if shared.no_cost {
-            row.pop();
-        }
+        let (row, input_tokens, cost) = codex_table_row(
+            label,
+            kind,
+            group,
+            pricing,
+            speed,
+            shared.no_cost,
+            terminal_width,
+        );
+        totals.add(group, input_tokens, cost);
         table.push(row);
+        if by_source {
+            let sources = source_groups_for_group(group);
+            for (source, usage) in &sources {
+                let source_group = CodexGroup {
+                    input_tokens: usage.input_tokens,
+                    cached_input_tokens: usage.cached_input_tokens,
+                    cache_creation_tokens: usage.cache_creation_tokens,
+                    output_tokens: usage.output_tokens,
+                    reasoning_output_tokens: usage.reasoning_output_tokens,
+                    total_tokens: usage.total_tokens,
+                    models: usage.models.clone(),
+                    ..CodexGroup::default()
+                };
+                let (source_row, _, _) = codex_table_row(
+                    &format!("  {source}"),
+                    kind,
+                    &source_group,
+                    pricing,
+                    speed,
+                    shared.no_cost,
+                    terminal_width,
+                );
+                table.push(source_row);
+            }
+        }
     }
     table.separator();
-    let mut total_row = vec![
-        color(shared, "Total", Color::Yellow),
-        String::new(),
-        color(shared, format_number(total_input), Color::Yellow),
-        color(shared, format_number(total_output), Color::Yellow),
-        color(shared, format_number(total_reasoning), Color::Yellow),
-        color(shared, format_number(total_cached), Color::Yellow),
-        color(shared, format_number(total_tokens), Color::Yellow),
-        color(shared, format_currency(total_cost), Color::Yellow),
-    ];
-    if shared.no_cost {
-        total_row.pop();
-    }
-    table.push(total_row);
+    table.push(codex_table_total_row(&totals, shared, shared.no_cost));
     table.print()?;
     let missing_models = codex_missing_pricing_models(groups, pricing);
     print_missing_pricing_warnings_for_models(
@@ -433,4 +762,222 @@ pub(super) fn print_table_from_groups(
         shared.offline,
     );
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn non_cached_input_tokens_excludes_cache_reads_and_creation() {
+        assert_eq!(non_cached_input_tokens(100, 60, 30), 10);
+        assert_eq!(non_cached_input_tokens(100, 90, 20), 0);
+    }
+
+    #[test]
+    fn table_rows_and_totals_render_cache_creation_tokens() {
+        let group = CodexGroup {
+            input_tokens: 100,
+            cached_input_tokens: 60,
+            cache_creation_tokens: 30,
+            output_tokens: 5,
+            reasoning_output_tokens: 1,
+            total_tokens: 105,
+            ..CodexGroup::default()
+        };
+        let shared = SharedArgs {
+            no_color: true,
+            ..SharedArgs::default()
+        };
+        let (headers, aligns) = codex_table_columns("Date", false);
+        let (row, input_tokens, cost) = codex_table_row(
+            "2026-08-20",
+            AgentReportKind::Daily,
+            &group,
+            &PricingMap::default(),
+            CodexSpeedPolicy::Forced(CodexServiceTier::Standard),
+            false,
+            160,
+        );
+        let mut totals = CodexTableTotals::default();
+        totals.add(&group, input_tokens, cost);
+        let total_row = codex_table_total_row(&totals, &shared, false);
+
+        assert_eq!(headers[5], "Cache Create");
+        assert_eq!(headers.len(), aligns.len());
+        assert_eq!(row[5], "30");
+        assert_eq!(total_row[5], "30");
+    }
+
+    #[test]
+    fn source_table_rows_snapshot_matches_focused_table_shape() {
+        let usage = CodexModelUsage {
+            input_tokens: 100,
+            cached_input_tokens: 20,
+            output_tokens: 10,
+            total_tokens: 110,
+            ..CodexModelUsage::default()
+        };
+        let source_group = CodexGroup {
+            input_tokens: 100,
+            cached_input_tokens: 20,
+            output_tokens: 10,
+            total_tokens: 110,
+            models: std::collections::BTreeMap::from([("gpt-5".to_string(), usage)]),
+            ..CodexGroup::default()
+        };
+        let rows = vec![
+            codex_table_row(
+                "2026-08-20",
+                AgentReportKind::Daily,
+                &source_group,
+                &PricingMap::default(),
+                CodexSpeedPolicy::Forced(CodexServiceTier::Standard),
+                false,
+                160,
+            )
+            .0,
+            codex_table_row(
+                "  CLI",
+                AgentReportKind::Daily,
+                &source_group,
+                &PricingMap::default(),
+                CodexSpeedPolicy::Forced(CodexServiceTier::Standard),
+                false,
+                160,
+            )
+            .0,
+        ];
+
+        insta::assert_debug_snapshot!(rows);
+    }
+
+    #[test]
+    fn sanitizes_unknown_source_only_in_focused_table_rows() {
+        let source = "future\nclient\u{1b}[31m";
+        let group = CodexGroup::default();
+
+        let (row, _, _) = codex_table_row(
+            &format!("  {source}"),
+            AgentReportKind::Daily,
+            &group,
+            &PricingMap::default(),
+            CodexSpeedPolicy::Forced(CodexServiceTier::Standard),
+            false,
+            160,
+        );
+
+        assert_eq!(row[0], r#"  future\nclient\u{1b}[31m"#);
+    }
+
+    #[test]
+    fn preserves_unknown_source_control_characters_in_focused_json() {
+        let source = "future\nclient\u{1b}[31m";
+        let group = CodexGroup {
+            sources: BTreeMap::from([(source.to_string(), CodexSourceUsage::default())]),
+            ..CodexGroup::default()
+        };
+
+        let report = report_from_groups_with_source(
+            &BTreeMap::from([("2026-08-20".to_string(), group)]),
+            AgentReportKind::Daily,
+            &PricingMap::default(),
+            CodexSpeedPolicy::Forced(CodexServiceTier::Standard),
+            true,
+        );
+
+        assert_eq!(report["daily"][0]["sourceBreakdowns"][0]["source"], source);
+    }
+
+    #[test]
+    fn standard_cost_table_at_120_columns_renders_distinguishable_daily_dates() {
+        let group = CodexGroup {
+            input_tokens: 100,
+            cached_input_tokens: 60,
+            cache_creation_tokens: 30,
+            output_tokens: 5,
+            reasoning_output_tokens: 1,
+            total_tokens: 105,
+            ..CodexGroup::default()
+        };
+        let (headers, aligns) = codex_table_columns("Date", false);
+        let (row, _, _) = codex_table_row(
+            "2026-08-20",
+            AgentReportKind::Daily,
+            &group,
+            &PricingMap::default(),
+            CodexSpeedPolicy::Forced(CodexServiceTier::Standard),
+            false,
+            120,
+        );
+        let (no_cost_headers, no_cost_aligns) = codex_table_columns("Date", true);
+        let (no_cost_row, _, _) = codex_table_row(
+            "2026-08-20",
+            AgentReportKind::Daily,
+            &group,
+            &PricingMap::default(),
+            CodexSpeedPolicy::Forced(CodexServiceTier::Standard),
+            true,
+            120,
+        );
+
+        assert_eq!(headers[5], "Cache Create");
+        assert_eq!(headers.len(), aligns.len());
+        assert_eq!(row[0], "2026\n08-20");
+        assert_eq!(no_cost_headers.last(), Some(&"Total Tokens"));
+        assert_eq!(no_cost_headers.len(), no_cost_aligns.len());
+        assert_eq!(no_cost_row[0], "2026\n08-20");
+    }
+
+    #[test]
+    fn no_cost_table_at_120_columns_renders_distinguishable_daily_dates() {
+        let group = CodexGroup {
+            input_tokens: 100,
+            cached_input_tokens: 60,
+            cache_creation_tokens: 30,
+            output_tokens: 5,
+            reasoning_output_tokens: 1,
+            total_tokens: 105,
+            ..CodexGroup::default()
+        };
+        let shared = SharedArgs {
+            no_color: true,
+            ..SharedArgs::default()
+        };
+        let (headers, aligns) = codex_table_columns("Date", true);
+        let (first_row, first_input, first_cost) = codex_table_row(
+            "2026-08-20",
+            AgentReportKind::Daily,
+            &group,
+            &PricingMap::default(),
+            CodexSpeedPolicy::Forced(CodexServiceTier::Standard),
+            true,
+            120,
+        );
+        let (second_row, second_input, second_cost) = codex_table_row(
+            "2026-08-21",
+            AgentReportKind::Daily,
+            &group,
+            &PricingMap::default(),
+            CodexSpeedPolicy::Forced(CodexServiceTier::Standard),
+            true,
+            120,
+        );
+        let mut totals = CodexTableTotals::default();
+        totals.add(&group, first_input, first_cost);
+        totals.add(&group, second_input, second_cost);
+        let total_row = codex_table_total_row(&totals, &shared, true);
+
+        assert_eq!(headers[5], "Cache Create");
+        assert_eq!(headers.last(), Some(&"Total Tokens"));
+        assert_eq!(headers.len(), aligns.len());
+        assert_eq!(first_row.len(), headers.len());
+        assert_eq!(second_row.len(), headers.len());
+        assert_eq!(total_row.len(), headers.len());
+        assert_eq!(first_row[0], "2026\n08-20");
+        assert_eq!(second_row[0], "2026\n08-21");
+        assert_ne!(first_row[0], second_row[0]);
+        assert_eq!(first_row[5], "30");
+        assert_eq!(total_row[5], "60");
+    }
 }

@@ -1,4 +1,4 @@
-use std::{cell::RefCell, env, path::PathBuf};
+use std::{cell::RefCell, env, ffi::OsString, path::PathBuf};
 
 thread_local! {
     static HOME_DIR_OVERRIDE: RefCell<Option<PathBuf>> = const { RefCell::new(None) };
@@ -41,6 +41,13 @@ pub fn data_path_env_var(name: &str) -> Result<String, env::VarError> {
         return Err(env::VarError::NotPresent);
     }
     env::var(name)
+}
+
+pub fn data_path_env_var_os(name: &str) -> Option<OsString> {
+    if home_dir_is_overridden() {
+        return None;
+    }
+    env::var_os(name)
 }
 
 fn home_dir_from_env(
@@ -139,6 +146,7 @@ mod tests {
 
         with_home_dir_override(PathBuf::from("/srv/users/alice"), || {
             assert!(data_path_env_var("CCUSAGE_TEST_DATA_HOME").is_err());
+            assert!(data_path_env_var_os("CCUSAGE_TEST_DATA_HOME").is_none());
         });
     }
 }

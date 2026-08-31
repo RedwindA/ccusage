@@ -98,8 +98,8 @@ pub struct CodexCommandsConfig {
     pub daily: Option<CodexOptions>,
     pub monthly: Option<CodexOptions>,
     pub session: Option<CodexOptions>,
-    pub model: Option<CodexOptions>,
-    pub workspace: Option<CodexOptions>,
+    pub model: Option<CodexDimensionOptions>,
+    pub workspace: Option<CodexDimensionOptions>,
 }
 
 #[derive(Debug, Default, Deserialize, JsonSchema)]
@@ -477,11 +477,24 @@ pub struct StatuslineSpecificOptions {
     pub debug: Option<bool>,
     /// Map model identifiers to short display labels.
     pub model_label_aliases: Option<HashMap<String, String>>,
+    /// Runtime pricing overrides keyed by raw model name.
+    pub pricing_overrides: Option<BTreeMap<String, ConfigPricingOverride>>,
 }
 
 #[derive(Debug, Default, Deserialize, JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct CodexOptions {
+    #[serde(flatten)]
+    pub shared: SharedOptions,
+    /// Codex speed normalization strategy.
+    pub speed: Option<ConfigCodexSpeed>,
+    /// Include usage breakdowns by Codex client or originator.
+    pub by_source: Option<bool>,
+}
+
+#[derive(Debug, Default, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct CodexDimensionOptions {
     #[serde(flatten)]
     pub shared: SharedOptions,
     /// Codex speed normalization strategy.
@@ -644,6 +657,7 @@ impl StatuslineSpecificOptions {
             timezone: string_option(map, "timezone"),
             debug: bool_option(map, "debug"),
             model_label_aliases: hashmap_option(map, "modelLabelAliases"),
+            pricing_overrides: pricing_override_map_option(map, "pricingOverrides"),
         }
     }
 }
@@ -653,6 +667,7 @@ impl CodexOptions {
         Self {
             shared: SharedOptions::from_map(map),
             speed: enum_option(map, "speed"),
+            by_source: bool_option(map, "bySource"),
         }
     }
 }
@@ -904,7 +919,12 @@ fn add_schema_defaults(schema: &mut Value) {
             ("debug", json!(false)),
         ],
     );
-    set_definition_defaults(schema, "CodexOptions", &[("speed", json!("auto"))]);
+    set_definition_defaults(
+        schema,
+        "CodexOptions",
+        &[("speed", json!("auto")), ("bySource", json!(false))],
+    );
+    set_definition_defaults(schema, "CodexDimensionOptions", &[("speed", json!("auto"))]);
 }
 
 fn set_definition_defaults(schema: &mut Value, definition: &str, defaults: &[(&str, Value)]) {
@@ -1098,6 +1118,7 @@ mod tests {
                 "noCache",
                 "noOffline",
                 "offline",
+                "pricingOverrides",
                 "refreshInterval",
                 "timezone",
                 "visualBurnRate",
@@ -1106,7 +1127,7 @@ mod tests {
         assert_schema_properties(
             &schema,
             &["codex", "defaults"],
-            &with_keys(&shared, &["speed"]),
+            &with_keys(&shared, &["bySource", "speed"]),
         );
         assert_schema_properties(&schema, &["claude", "commands", "model"], &shared);
         assert_schema_properties(
@@ -1134,6 +1155,7 @@ mod tests {
         let schema = generated_schema();
 
         assert!(schema_property(&schema, &["codex", "defaults", "speed"]).is_some());
+        assert!(schema_property(&schema, &["codex", "defaults", "bySource"]).is_some());
         assert!(schema_property(&schema, &["opencode", "defaults", "speed"]).is_none());
         assert!(schema_property(&schema, &["amp", "defaults", "speed"]).is_none());
         assert!(schema_property(&schema, &["droid", "defaults", "speed"]).is_none());
@@ -1397,6 +1419,10 @@ mod tests {
         assert_eq!(
             property_default(&schema, &["codex", "defaults", "speed"]),
             Some(&json!("auto"))
+        );
+        assert_eq!(
+            property_default(&schema, &["codex", "defaults", "bySource"]),
+            Some(&json!(false))
         );
     }
 

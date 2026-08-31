@@ -58,6 +58,7 @@ fn main() -> Result<()> {
                 sections: None,
                 by_agent: false,
                 all_users: false,
+                by_source: false,
                 pi_path: None,
                 open_claw_path: None,
                 codex_speed: cli::CodexSpeed::Auto,
@@ -282,7 +283,31 @@ mod tests {
     }
 
     #[test]
-    fn dedupes_usage_entries_by_message_id_without_request_id() {
+    fn keeps_reused_message_id_from_distinct_sessions_at_same_timestamp() {
+        let fixture = fs_fixture!({
+            "projects/project1/session1/chat.jsonl": r#"{"timestamp":"2025-01-10T10:00:00.000Z","message":{"id":"msg_123","model":"claude-opus-4-6","usage":{"input_tokens":100,"output_tokens":25,"cache_creation_input_tokens":10,"cache_read_input_tokens":5}},"costUSD":0.001}"#,
+            "projects/project1/session2/chat.jsonl": r#"{"timestamp":"2025-01-10T10:00:00.000Z","message":{"id":"msg_123","model":"claude-opus-4-6","usage":{"input_tokens":100,"output_tokens":250,"cache_creation_input_tokens":10,"cache_read_input_tokens":5,"speed":"standard"}},"costUSD":0.01}"#,
+        });
+
+        let _env = EnvVarGuard::set("CLAUDE_CONFIG_DIR", fixture.root());
+        let shared = SharedArgs {
+            mode: CostMode::Display,
+            ..SharedArgs::default()
+        };
+        let entries = load_entries(&shared, None).unwrap();
+
+        assert_eq!(entries.len(), 2);
+        assert_eq!(
+            entries
+                .iter()
+                .map(|entry| entry.data.message.usage.output_tokens)
+                .sum::<u64>(),
+            275
+        );
+    }
+
+    #[test]
+    fn dedupes_reused_message_id_from_same_session_without_request_id() {
         let fixture = fs_fixture!({
             "projects/project1/session1/chat.jsonl": [
                 r#"{"timestamp":"2025-01-10T10:00:00.000Z","message":{"id":"msg_123","model":"claude-opus-4-6","usage":{"input_tokens":100,"output_tokens":25,"cache_creation_input_tokens":10,"cache_read_input_tokens":5}},"costUSD":0.001}"#,
@@ -547,11 +572,13 @@ mod tests {
             model: Some("gpt-5".to_string()),
             input_tokens: 100,
             cached_input_tokens: 10,
+            cache_creation_tokens: 0,
             output_tokens: 50,
             reasoning_output_tokens: 0,
             total_tokens: 150,
             is_fallback_model: false,
             service_tier: None,
+            source: None,
         }];
 
         let report = adapter::codex::report_json(
@@ -589,11 +616,13 @@ mod tests {
             model: Some("gpt-5.3-codex".to_string()),
             input_tokens: 120,
             cached_input_tokens: 30,
+            cache_creation_tokens: 0,
             output_tokens: 11,
             reasoning_output_tokens: 3,
             total_tokens: 131,
             is_fallback_model: false,
             service_tier: None,
+            source: None,
         }];
 
         let report = adapter::codex::report_json(
@@ -627,11 +656,13 @@ mod tests {
             model: Some("gpt-test".to_string()),
             input_tokens: 10,
             cached_input_tokens: 2,
+            cache_creation_tokens: 0,
             output_tokens: 5,
             reasoning_output_tokens: 0,
             total_tokens: 15,
             is_fallback_model: false,
             service_tier: None,
+            source: None,
         }];
 
         let standard = adapter::codex::report_json(
@@ -664,11 +695,13 @@ mod tests {
             model: Some("gpt-5.4".to_string()),
             input_tokens: 100,
             cached_input_tokens: 40,
+            cache_creation_tokens: 0,
             output_tokens: 10,
             reasoning_output_tokens: 0,
             total_tokens: 110,
             is_fallback_model: false,
             service_tier: None,
+            source: None,
         }];
 
         let standard = adapter::codex::report_json(
