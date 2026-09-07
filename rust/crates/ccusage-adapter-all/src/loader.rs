@@ -5,15 +5,14 @@ use std::{
     thread,
 };
 
-use ccusage_adapter_codex::{CodexModelUsage, CodexSourceUsage};
 use serde_json::{Value, json};
 
 use crate::{
     BUILT_IN_AGENT_NAMES, CodexGroup, LoadedEntry, ModelBreakdown, PricingMap, Result,
     SessionAccumulator, UsageSummary,
     adapter::{
-        amp, claude, codebuff, codex, copilot, droid, gemini, goose, grok, hermes, kilo, kimi,
-        openclaw, opencode, pi, qwen,
+        amp, antigravity, claude, codebuff, codex, copilot, droid, gemini, goose, grok, hermes,
+        kilo, kimi, openclaw, opencode, pi, qwen, zcode,
     },
     cli::{AgentReportKind, CodexSpeed, NamedPiStore, SharedArgs, WeekDay},
     filter_loaded_entries_by_date, json_float,
@@ -339,6 +338,21 @@ fn load_base_rows(
         AgentLoadSpec {
             index: 13,
             agent: BUILT_IN_AGENT_NAMES[13],
+            progress_agent: crate::progress::UsageLoadAgent("Antigravity"),
+            load: Box::new(|| {
+                load_priced_summary_agent_rows(
+                    "antigravity",
+                    load_kind,
+                    &loader_shared,
+                    pricing,
+                    antigravity::load_entries,
+                    antigravity::summarize_entries,
+                )
+            }),
+        },
+        AgentLoadSpec {
+            index: 14,
+            agent: BUILT_IN_AGENT_NAMES[14],
             progress_agent: crate::progress::UsageLoadAgent("Kimi"),
             load: Box::new(|| {
                 load_priced_summary_agent_rows(
@@ -352,14 +366,14 @@ fn load_base_rows(
             }),
         },
         AgentLoadSpec {
-            index: 14,
-            agent: BUILT_IN_AGENT_NAMES[14],
+            index: 15,
+            agent: BUILT_IN_AGENT_NAMES[15],
             progress_agent: crate::progress::UsageLoadAgent("Qwen"),
             load: Box::new(|| load_qwen_rows(load_kind, &loader_shared, pricing)),
         },
         AgentLoadSpec {
-            index: 15,
-            agent: BUILT_IN_AGENT_NAMES[15],
+            index: 16,
+            agent: BUILT_IN_AGENT_NAMES[16],
             progress_agent: crate::progress::UsageLoadAgent("Grok"),
             load: Box::new(|| {
                 let mut rows = load_summary_agent_rows(
@@ -371,6 +385,21 @@ fn load_base_rows(
                 )?;
                 rows.detected = rows.detected || grok::has_data();
                 Ok(rows)
+            }),
+        },
+        AgentLoadSpec {
+            index: 17,
+            agent: BUILT_IN_AGENT_NAMES[17],
+            progress_agent: crate::progress::UsageLoadAgent("ZCode"),
+            load: Box::new(|| {
+                load_priced_summary_agent_rows(
+                    "zcode",
+                    load_kind,
+                    &loader_shared,
+                    pricing,
+                    zcode::load_entries,
+                    zcode::summarize_entries,
+                )
             }),
         },
     ];
@@ -919,7 +948,28 @@ where
     S: Into<codex::CodexSpeedPolicy> + Copy,
 {
     let speed = speed.into();
-    let model_breakdowns = codex_model_breakdowns(&group.models, pricing, speed);
+    let mut model_breakdowns: Vec<ModelBreakdown> = group
+        .models
+        .iter()
+        .map(|(model, usage)| {
+            let input = codex::non_cached_input_tokens(
+                usage.input_tokens,
+                usage.cached_input_tokens,
+                usage.cache_creation_tokens,
+            );
+            ModelBreakdown {
+                model_name: model.clone(),
+                input_tokens: input,
+                output_tokens: usage.output_tokens,
+                cache_creation_tokens: usage.cache_creation_tokens,
+                cache_read_tokens: usage.cached_input_tokens,
+                extra_total_tokens: 0,
+                cost: codex::calculate_codex_model_cost(model, usage, pricing, speed),
+                missing_pricing: codex::codex_model_missing_pricing(model, usage, pricing),
+            }
+        })
+        .collect();
+    model_breakdowns.sort_by(|a, b| b.cost.total_cmp(&a.cost));
     AllRow {
         period: period.to_string(),
         user: None,
@@ -938,88 +988,11 @@ where
         metadata: Some(json!({
             "lastActivity": group.last_activity,
             "reasoningOutputTokens": group.reasoning_output_tokens,
-            "sourceBreakdowns": codex_source_breakdowns(group, pricing, speed),
         })),
         metadata_agents: Some(vec!["codex"]),
         agent_breakdowns: None,
         model_breakdowns,
     }
-}
-
-fn codex_model_breakdowns<S>(
-    models: &BTreeMap<String, CodexModelUsage>,
-    pricing: &PricingMap,
-    speed: S,
-) -> Vec<ModelBreakdown>
-where
-    S: Into<codex::CodexSpeedPolicy> + Copy,
-{
-    let mut breakdowns = models
-        .iter()
-        .map(|(model, usage)| ModelBreakdown {
-            model_name: model.clone(),
-            input_tokens: codex::non_cached_input_tokens(
-                usage.input_tokens,
-                usage.cached_input_tokens,
-                usage.cache_creation_tokens,
-            ),
-            output_tokens: usage.output_tokens,
-            cache_creation_tokens: usage.cache_creation_tokens,
-            cache_read_tokens: usage.cached_input_tokens,
-            extra_total_tokens: 0,
-            cost: codex::calculate_codex_model_cost(model, usage, pricing, speed),
-            missing_pricing: codex::codex_model_missing_pricing(model, usage, pricing),
-        })
-        .collect::<Vec<_>>();
-    breakdowns.sort_by(|a, b| b.cost.total_cmp(&a.cost));
-    breakdowns
-}
-
-fn codex_source_breakdowns<S>(group: &CodexGroup, pricing: &PricingMap, speed: S) -> Value
-where
-    S: Into<codex::CodexSpeedPolicy> + Copy,
-{
-    let sources = if group.sources.is_empty() {
-        let usage = CodexSourceUsage {
-            input_tokens: group.input_tokens,
-            cached_input_tokens: group.cached_input_tokens,
-            cache_creation_tokens: group.cache_creation_tokens,
-            output_tokens: group.output_tokens,
-            reasoning_output_tokens: group.reasoning_output_tokens,
-            total_tokens: group.total_tokens,
-            models: group.models.clone(),
-        };
-        BTreeMap::from([("Uncategorized".to_string(), usage)])
-    } else {
-        group.sources.clone()
-    };
-    Value::Array(
-        sources
-            .iter()
-            .map(|(source, usage)| {
-                json!({
-                    "source": source,
-                    "modelsUsed": usage.models.keys().cloned().collect::<Vec<_>>(),
-                    "inputTokens": codex::non_cached_input_tokens(
-                        usage.input_tokens,
-                        usage.cached_input_tokens,
-                        usage.cache_creation_tokens,
-                    ),
-                    "outputTokens": usage.output_tokens,
-                    "cacheCreationTokens": usage.cache_creation_tokens,
-                    "cacheReadTokens": usage.cached_input_tokens,
-                    "reasoningOutputTokens": usage.reasoning_output_tokens,
-                    "totalTokens": usage.total_tokens,
-                    "totalCost": json_float(codex::calculate_codex_source_cost(
-                        usage,
-                        pricing,
-                        speed,
-                    )),
-                    "modelBreakdowns": codex_model_breakdowns(&usage.models, pricing, speed),
-                })
-            })
-            .collect(),
-    )
 }
 
 pub(super) fn aggregate_rows(rows: Vec<AllRow>, kind: AgentReportKind) -> Vec<AllRow> {

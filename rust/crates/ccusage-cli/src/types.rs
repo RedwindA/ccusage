@@ -25,10 +25,12 @@ pub enum Command {
     Kilo(AgentCommandArgs),
     Copilot(AgentCommandArgs),
     Gemini(AgentCommandArgs),
+    Antigravity(AgentCommandArgs),
     Kimi(AgentCommandArgs),
     Qwen(AgentCommandArgs),
     OpenClaw(AgentCommandArgs),
     Grok(AgentCommandArgs),
+    ZCode(AgentCommandArgs),
 }
 
 #[derive(Clone, Debug, Default)]
@@ -176,7 +178,6 @@ pub struct AgentCommandArgs {
     pub sections: Option<Vec<AgentReportKind>>,
     pub by_agent: bool,
     pub all_users: bool,
-    pub by_source: bool,
     pub pi_path: Option<String>,
     pub open_claw_path: Option<String>,
     pub codex_speed: CodexSpeed,
@@ -324,7 +325,6 @@ pub trait CliConfig {
     fn apply_agent_args(
         &self,
         _codex_speed: &mut CodexSpeed,
-        _by_source: Option<&mut bool>,
         _pi_path: Option<&mut Option<String>>,
         _open_claw_path: Option<&mut Option<String>>,
     ) {

@@ -7,7 +7,7 @@ use std::{
 use serde_json::Value;
 
 use crate::{
-    PricingMap, Result, TokenUsageRaw, apply_total_token_fallback, calculate_cost_for_usage,
+    PricingMap, Result, TokenUsageRaw, apply_total_token_fallback, calculate_cost_for_usage_at,
     cli::CostMode, format_rfc3339_millis, json_value_u64, missing_pricing_model_for_candidates,
     parse_ts_timestamp,
 };
@@ -16,6 +16,7 @@ use crate::{
 pub(super) struct DroidEntry {
     pub(super) timestamp: crate::TimestampMs,
     pub(super) timestamp_text: String,
+    pricing_timestamp: Option<crate::TimestampMs>,
     pub(super) session_id: String,
     pub(super) model: String,
     provider: String,
@@ -130,7 +131,8 @@ pub(super) fn load_settings_file(
     } else {
         provider
     };
-    let Some((timestamp, timestamp_text)) = settings_timestamp(settings, path) else {
+    let Some((timestamp, timestamp_text, pricing_timestamp)) = settings_timestamp(settings, path)
+    else {
         return Ok(None);
     };
     let session_id = path
@@ -146,6 +148,7 @@ pub(super) fn load_settings_file(
     Ok(Some(DroidEntry {
         timestamp,
         timestamp_text,
+        pricing_timestamp,
         session_id,
         model,
         provider,
@@ -195,11 +198,11 @@ pub(super) fn parse_token_usage(value: Option<&Value>) -> Option<DroidTokenUsage
 fn settings_timestamp(
     settings: &serde_json::Map<String, Value>,
     path: &Path,
-) -> Option<(crate::TimestampMs, String)> {
+) -> Option<(crate::TimestampMs, String, Option<crate::TimestampMs>)> {
     if let Some(timestamp_text) = string_field(settings, "providerLockTimestamp")
         && let Some(timestamp) = parse_ts_timestamp(&timestamp_text)
     {
-        return Some((timestamp, format_rfc3339_millis(timestamp)));
+        return Some((timestamp, format_rfc3339_millis(timestamp), Some(timestamp)));
     }
     let modified = fs::metadata(path).ok()?.modified().ok()?;
     let millis = modified
@@ -208,7 +211,7 @@ fn settings_timestamp(
         .as_millis()
         .min(i64::MAX as u128) as i64;
     let timestamp = crate::TimestampMs::from_millis(millis);
-    Some((timestamp, format_rfc3339_millis(timestamp)))
+    Some((timestamp, format_rfc3339_millis(timestamp), None))
 }
 
 pub(super) fn calculate_droid_cost(entry: &DroidEntry, pricing: &PricingMap) -> f64 {
@@ -218,10 +221,11 @@ pub(super) fn calculate_droid_cost(entry: &DroidEntry, pricing: &PricingMap) -> 
         ..entry.usage
     };
     for candidate in droid_model_candidates(entry) {
-        let cost = calculate_cost_for_usage(
+        let cost = calculate_cost_for_usage_at(
             Some(&candidate),
             usage,
             None,
+            entry.pricing_timestamp,
             CostMode::Calculate,
             Some(pricing),
         );
@@ -446,4 +450,85 @@ fn extract_droid_model_from_line(line: &str) -> Option<String> {
     }
     let normalized = normalize_droid_model_name(raw);
     (!normalized.is_empty()).then_some(normalized)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn deepseek_pricing() -> PricingMap {
+        let mut pricing = PricingMap::default();
+        pricing.load_json(
+            r#"{
+                "deepseek-v4-flash": {
+                    "input_cost_per_token": 0.00000014,
+                    "output_cost_per_token": 0.00000028
+                }
+            }"#,
+        );
+        pricing
+    }
+
+    #[test]
+    fn does_not_use_display_timestamp_for_droid_pricing() {
+        let timestamp = parse_ts_timestamp("2026-08-17T01:00:00Z").unwrap();
+        let entry = DroidEntry {
+            timestamp,
+            timestamp_text: format_rfc3339_millis(timestamp),
+            pricing_timestamp: None,
+            session_id: "session".to_string(),
+            model: "deepseek-v4-flash".to_string(),
+            provider: "deepseek".to_string(),
+            usage: TokenUsageRaw {
+                input_tokens: 1_000_000,
+                ..TokenUsageRaw::default()
+            },
+            reasoning_tokens: 0,
+            workspace_path: "unknown".to_string(),
+        };
+
+        assert_eq!(calculate_droid_cost(&entry, &deepseek_pricing()), 0.14);
+    }
+
+    #[test]
+    fn preserves_provider_lock_timestamp_for_pricing() {
+        let fixture = ccusage_test_support::fs_fixture!({
+            "session.settings.json": r#"{
+                "providerLockTimestamp": "2026-08-17T01:00:00Z",
+                "tokenUsage": {"inputTokens": 1}
+            }"#
+        });
+
+        let entry = load_settings_file(
+            &fixture.path("session.settings.json"),
+            None,
+            &DroidCustomModels::default(),
+        )
+        .unwrap()
+        .unwrap();
+
+        assert_eq!(
+            entry.pricing_timestamp,
+            Some(parse_ts_timestamp("2026-08-17T01:00:00Z").unwrap())
+        );
+    }
+
+    #[test]
+    fn leaves_pricing_timestamp_empty_when_only_file_metadata_is_available() {
+        let fixture = ccusage_test_support::fs_fixture!({
+            "session.settings.json": r#"{
+                "tokenUsage": {"inputTokens": 1}
+            }"#
+        });
+
+        let entry = load_settings_file(
+            &fixture.path("session.settings.json"),
+            None,
+            &DroidCustomModels::default(),
+        )
+        .unwrap()
+        .unwrap();
+
+        assert_eq!(entry.pricing_timestamp, None);
+    }
 }

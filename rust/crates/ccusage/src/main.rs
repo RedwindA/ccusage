@@ -48,9 +48,11 @@ fn main() -> Result<()> {
         Some(Command::Qwen(args)) => adapter::qwen::run(args),
         Some(Command::Copilot(args)) => adapter::copilot::run(args),
         Some(Command::Gemini(args)) => adapter::gemini::run(args),
+        Some(Command::Antigravity(args)) => adapter::antigravity::run(args),
         Some(Command::Kimi(args)) => adapter::kimi::run(args),
         Some(Command::OpenClaw(args)) => adapter::openclaw::run(args),
         Some(Command::Grok(args)) => adapter::grok::run(args),
+        Some(Command::ZCode(args)) => adapter::zcode::run(args),
         None => {
             let args = AgentCommandArgs {
                 shared: cli.shared,
@@ -58,7 +60,6 @@ fn main() -> Result<()> {
                 sections: None,
                 by_agent: false,
                 all_users: false,
-                by_source: false,
                 pi_path: None,
                 open_claw_path: None,
                 codex_speed: cli::CodexSpeed::Auto,
@@ -91,8 +92,9 @@ mod tests {
 
     #[test]
     fn agent_commands_are_exposed_by_independent_crates() {
-        let runs: [fn(AgentCommandArgs) -> Result<()>; 15] = [
+        let runs: [fn(AgentCommandArgs) -> Result<()>; 17] = [
             ccusage_adapter_amp::run,
+            ccusage_adapter_antigravity::run,
             ccusage_adapter_codebuff::run,
             ccusage_adapter_codex::run,
             ccusage_adapter_copilot::run,
@@ -107,9 +109,10 @@ mod tests {
             ccusage_adapter_opencode::run,
             ccusage_adapter_pi::run,
             ccusage_adapter_qwen::run,
+            ccusage_adapter_zcode::run,
         ];
 
-        assert_eq!(runs.len(), 15);
+        assert_eq!(runs.len(), 17);
     }
 
     #[test]
@@ -578,7 +581,6 @@ mod tests {
             total_tokens: 150,
             is_fallback_model: false,
             service_tier: None,
-            source: None,
         }];
 
         let report = adapter::codex::report_json(
@@ -622,7 +624,6 @@ mod tests {
             total_tokens: 131,
             is_fallback_model: false,
             service_tier: None,
-            source: None,
         }];
 
         let report = adapter::codex::report_json(
@@ -662,7 +663,6 @@ mod tests {
             total_tokens: 15,
             is_fallback_model: false,
             service_tier: None,
-            source: None,
         }];
 
         let standard = adapter::codex::report_json(
@@ -701,7 +701,6 @@ mod tests {
             total_tokens: 110,
             is_fallback_model: false,
             service_tier: None,
-            source: None,
         }];
 
         let standard = adapter::codex::report_json(

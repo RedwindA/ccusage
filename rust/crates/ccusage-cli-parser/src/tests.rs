@@ -43,7 +43,6 @@ struct TestConfig {
     statusline_cost_source: Option<CostSource>,
     statusline_refresh_interval: Option<u64>,
     codex_speed: Option<CodexSpeed>,
-    codex_by_source: Option<bool>,
     pi_path: Option<&'static str>,
     open_claw_path: Option<&'static str>,
 }
@@ -100,15 +99,11 @@ impl CliConfig for TestConfig {
     fn apply_agent_args(
         &self,
         codex_speed: &mut CodexSpeed,
-        by_source: Option<&mut bool>,
         pi_path: Option<&mut Option<String>>,
         open_claw_path: Option<&mut Option<String>>,
     ) {
         if let Some(speed) = self.codex_speed {
             *codex_speed = speed;
-        }
-        if let (Some(value), Some(by_source)) = (self.codex_by_source, by_source) {
-            *by_source = value;
         }
         if let (Some(path), Some(pi_path)) = (self.pi_path, pi_path) {
             *pi_path = Some(path.to_string());
@@ -211,10 +206,12 @@ fn command_snapshot(command: Option<Command>) -> Value {
         Some(Command::Kilo(args)) => agent_command_snapshot("kilo", args),
         Some(Command::Copilot(args)) => agent_command_snapshot("copilot", args),
         Some(Command::Gemini(args)) => agent_command_snapshot("gemini", args),
+        Some(Command::Antigravity(args)) => agent_command_snapshot("antigravity", args),
         Some(Command::Kimi(args)) => agent_command_snapshot("kimi", args),
         Some(Command::Qwen(args)) => agent_command_snapshot("qwen", args),
         Some(Command::OpenClaw(args)) => agent_command_snapshot("openclaw", args),
         Some(Command::Grok(args)) => agent_command_snapshot("grok", args),
+        Some(Command::ZCode(args)) => agent_command_snapshot("zcode", args),
     }
 }
 
@@ -521,7 +518,6 @@ fn parses_unified_sections_and_by_agent_flags() {
         "--sections",
         "monthly,session",
         "--by-agent",
-        "--by-source",
         "--all-users",
     ]);
     let Some(Command::All(args)) = cli.command else {
@@ -533,7 +529,6 @@ fn parses_unified_sections_and_by_agent_flags() {
         Some(&[AgentReportKind::Monthly, AgentReportKind::Session][..])
     );
     assert!(args.by_agent);
-    assert!(args.by_source);
     assert!(args.all_users);
 }
 
@@ -632,12 +627,6 @@ fn rejects_sections_and_by_agent_with_top_level_session_id() {
         all_users_error,
         "The --all-users option cannot be used with session --id."
     );
-
-    let by_source_error = parse_error(&["ccusage", "session", "--id", "abc", "--by-source"]);
-    assert_eq!(
-        by_source_error,
-        "The --by-source option cannot be used with session --id."
-    );
 }
 
 #[test]
@@ -711,7 +700,6 @@ fn applies_config_defaults_and_command_options_before_cli_options() {
 fn applies_agent_namespace_config_to_codex_speed() {
     let config = TestConfig {
         codex_speed: Some(CodexSpeed::Fast),
-        codex_by_source: Some(true),
         ..TestConfig::default()
     };
 
@@ -720,7 +708,6 @@ fn applies_agent_namespace_config_to_codex_speed() {
         panic!("expected codex command");
     };
     assert_eq!(args.codex_speed, CodexSpeed::Fast);
-    assert!(args.by_source);
 }
 
 #[test]
@@ -812,7 +799,7 @@ fn root_help_lists_agent_namespaces_without_nested_commands() {
     let help = help_text();
     let agents = [
         "claude", "codex", "opencode", "amp", "droid", "codebuff", "hermes", "pi", "goose", "kilo",
-        "copilot", "gemini", "kimi", "qwen", "openclaw", "grok",
+        "copilot", "gemini", "kimi", "qwen", "openclaw", "grok", "zcode",
     ];
 
     for agent in agents {
@@ -843,7 +830,6 @@ fn contextual_codex_help_lists_speed_choices() {
     assert!(help.contains("Show Codex token usage grouped by day"));
     assert!(help.contains("USAGE:\n  ccusage codex daily <OPTIONS>"));
     assert!(help.contains("choices: auto | standard | fast"));
-    assert!(help.contains("--by-source"));
 }
 
 #[test]
@@ -1046,6 +1032,14 @@ fn snapshots_representative_cli_parse_shapes() {
             "cli": cli_snapshot(parse(&["ccusage", "grok", "daily", "--json"])),
         }),
         json!({
+            "case": "antigravity session",
+            "cli": cli_snapshot(parse(&["ccusage", "antigravity", "session", "--json"])),
+        }),
+        json!({
+            "case": "zcode daily",
+            "cli": cli_snapshot(parse(&["ccusage", "zcode", "daily", "--json"])),
+        }),
+        json!({
             "case": "blocks active recent",
             "cli": cli_snapshot(parse(&[
                 "ccusage",
@@ -1231,12 +1225,15 @@ fn parses_codex_speed_option() {
 }
 
 #[test]
-fn parses_codex_by_source_option() {
-    let cli = parse(&["ccusage", "codex", "daily", "--by-source"]);
-    let Some(Command::Codex(args)) = cli.command else {
-        panic!("expected codex command");
-    };
-    assert!(args.by_source);
+fn rejects_removed_codex_by_source_option() {
+    assert_eq!(
+        parse_error(&["ccusage", "codex", "daily", "--by-source"]),
+        "Unknown codex option '--by-source'"
+    );
+    assert_eq!(
+        parse_error(&["ccusage", "daily", "--by-source"]),
+        "Unknown option '--by-source'"
+    );
 }
 
 #[test]
@@ -1437,6 +1434,16 @@ fn parses_grok_daily_options() {
     let cli = parse(&["ccusage", "grok", "daily", "--json"]);
     let Some(Command::Grok(args)) = cli.command else {
         panic!("expected grok command");
+    };
+    assert_eq!(args.kind, AgentReportKind::Daily);
+    assert!(args.shared.json);
+}
+
+#[test]
+fn parses_zcode_daily_options() {
+    let cli = parse(&["ccusage", "zcode", "daily", "--json"]);
+    let Some(Command::ZCode(args)) = cli.command else {
+        panic!("expected zcode command");
     };
     assert_eq!(args.kind, AgentReportKind::Daily);
     assert!(args.shared.json);

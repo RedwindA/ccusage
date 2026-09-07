@@ -46,12 +46,16 @@ pub struct CcusageConfig {
     pub copilot: Option<CopilotConfig>,
     /// Gemini CLI configuration.
     pub gemini: Option<GeminiConfig>,
+    /// Antigravity configuration.
+    pub antigravity: Option<AntigravityConfig>,
     /// Kimi configuration.
     pub kimi: Option<KimiConfig>,
     /// Qwen configuration.
     pub qwen: Option<QwenConfig>,
     /// Grok Build CLI configuration.
     pub grok: Option<GrokConfig>,
+    /// ZCode configuration.
+    pub zcode: Option<ZCodeConfig>,
 }
 
 #[derive(Debug, Default, Deserialize, JsonSchema)]
@@ -284,6 +288,21 @@ pub struct GeminiCommandsConfig {
 
 #[derive(Debug, Default, Deserialize, JsonSchema)]
 #[serde(rename_all = "camelCase")]
+pub struct AntigravityConfig {
+    pub defaults: Option<SharedOptions>,
+    pub commands: Option<AntigravityCommandsConfig>,
+}
+
+#[derive(Debug, Default, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct AntigravityCommandsConfig {
+    pub daily: Option<SharedOptions>,
+    pub monthly: Option<SharedOptions>,
+    pub session: Option<SharedOptions>,
+}
+
+#[derive(Debug, Default, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
 pub struct KimiConfig {
     pub defaults: Option<SharedOptions>,
     pub commands: Option<KimiCommandsConfig>,
@@ -322,6 +341,21 @@ pub struct GrokConfig {
 #[derive(Debug, Default, Deserialize, JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct GrokCommandsConfig {
+    pub daily: Option<SharedOptions>,
+    pub monthly: Option<SharedOptions>,
+    pub session: Option<SharedOptions>,
+}
+
+#[derive(Debug, Default, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct ZCodeConfig {
+    pub defaults: Option<SharedOptions>,
+    pub commands: Option<ZCodeCommandsConfig>,
+}
+
+#[derive(Debug, Default, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct ZCodeCommandsConfig {
     pub daily: Option<SharedOptions>,
     pub monthly: Option<SharedOptions>,
     pub session: Option<SharedOptions>,
@@ -488,8 +522,6 @@ pub struct CodexOptions {
     pub shared: SharedOptions,
     /// Codex speed normalization strategy.
     pub speed: Option<ConfigCodexSpeed>,
-    /// Include usage breakdowns by Codex client or originator.
-    pub by_source: Option<bool>,
 }
 
 #[derive(Debug, Default, Deserialize, JsonSchema)]
@@ -667,7 +699,6 @@ impl CodexOptions {
         Self {
             shared: SharedOptions::from_map(map),
             speed: enum_option(map, "speed"),
-            by_source: bool_option(map, "bySource"),
         }
     }
 }
@@ -919,11 +950,7 @@ fn add_schema_defaults(schema: &mut Value) {
             ("debug", json!(false)),
         ],
     );
-    set_definition_defaults(
-        schema,
-        "CodexOptions",
-        &[("speed", json!("auto")), ("bySource", json!(false))],
-    );
+    set_definition_defaults(schema, "CodexOptions", &[("speed", json!("auto"))]);
     set_definition_defaults(schema, "CodexDimensionOptions", &[("speed", json!("auto"))]);
 }
 
@@ -1127,7 +1154,7 @@ mod tests {
         assert_schema_properties(
             &schema,
             &["codex", "defaults"],
-            &with_keys(&shared, &["bySource", "speed"]),
+            &with_keys(&shared, &["speed"]),
         );
         assert_schema_properties(&schema, &["claude", "commands", "model"], &shared);
         assert_schema_properties(
@@ -1148,6 +1175,8 @@ mod tests {
             &with_keys(&shared, &["openClawPath"]),
         );
         assert_schema_properties(&schema, &["grok", "defaults"], &shared);
+        assert_schema_properties(&schema, &["antigravity", "defaults"], &shared);
+        assert_schema_properties(&schema, &["zcode", "defaults"], &shared);
     }
 
     #[test]
@@ -1155,7 +1184,6 @@ mod tests {
         let schema = generated_schema();
 
         assert!(schema_property(&schema, &["codex", "defaults", "speed"]).is_some());
-        assert!(schema_property(&schema, &["codex", "defaults", "bySource"]).is_some());
         assert!(schema_property(&schema, &["opencode", "defaults", "speed"]).is_none());
         assert!(schema_property(&schema, &["amp", "defaults", "speed"]).is_none());
         assert!(schema_property(&schema, &["droid", "defaults", "speed"]).is_none());
@@ -1166,6 +1194,7 @@ mod tests {
         assert!(schema_property(&schema, &["openclaw", "defaults", "openClawPath"]).is_some());
         assert!(schema_property(&schema, &["kilo", "defaults", "openClawPath"]).is_none());
         assert!(schema_property(&schema, &["gemini", "defaults", "openClawPath"]).is_none());
+        assert!(schema_property(&schema, &["antigravity", "defaults", "openClawPath"]).is_none());
         assert!(schema_property(&schema, &["kimi", "defaults", "openClawPath"]).is_none());
         assert!(schema_property(&schema, &["qwen", "defaults", "openClawPath"]).is_none());
         assert!(schema_property(&schema, &["grok", "defaults", "grokPath"]).is_none());
@@ -1202,9 +1231,27 @@ mod tests {
             &schema,
             "ccusage-config",
             &[
-                "$schema", "amp", "claude", "codebuff", "codex", "commands", "copilot", "defaults",
-                "droid", "gemini", "goose", "grok", "hermes", "kilo", "kimi", "opencode",
-                "openclaw", "pi", "qwen",
+                "$schema",
+                "amp",
+                "claude",
+                "codebuff",
+                "codex",
+                "commands",
+                "copilot",
+                "defaults",
+                "droid",
+                "gemini",
+                "antigravity",
+                "goose",
+                "grok",
+                "hermes",
+                "kilo",
+                "kimi",
+                "opencode",
+                "openclaw",
+                "pi",
+                "qwen",
+                "zcode",
             ],
         );
         assert!(
@@ -1420,10 +1467,6 @@ mod tests {
             property_default(&schema, &["codex", "defaults", "speed"]),
             Some(&json!("auto"))
         );
-        assert_eq!(
-            property_default(&schema, &["codex", "defaults", "bySource"]),
-            Some(&json!(false))
-        );
     }
 
     #[test]
@@ -1499,6 +1542,7 @@ mod tests {
             "piDefaults": schema_node(&schema, &["pi", "defaults"]),
             "openclawDefaults": schema_node(&schema, &["openclaw", "defaults"]),
             "grokDefaults": schema_node(&schema, &["grok", "defaults"]),
+            "zcodeDefaults": schema_node(&schema, &["zcode", "defaults"]),
         }));
     }
 
