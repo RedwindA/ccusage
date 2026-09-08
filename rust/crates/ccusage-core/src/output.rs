@@ -380,26 +380,30 @@ fn empty_usage_table_message() -> &'static str {
 }
 
 pub fn print_missing_pricing_warnings(rows: &[UsageSummary], offline: bool) {
-    for warning in missing_pricing_warnings(rows, offline) {
+    for warning in missing_pricing_warnings(rows, offline, crate::log_level()) {
         eprintln!("{warning}");
     }
 }
 
-fn missing_pricing_warnings(rows: &[UsageSummary], offline: bool) -> Vec<String> {
+fn missing_pricing_warnings(
+    rows: &[UsageSummary],
+    offline: bool,
+    log_level: Option<u8>,
+) -> Vec<String> {
     let models = rows
         .iter()
         .flat_map(|row| &row.model_breakdowns)
         .filter(|breakdown| breakdown.missing_pricing)
         .map(|breakdown| breakdown.model_name.as_str());
 
-    missing_pricing_warnings_for_models(models, offline)
+    missing_pricing_warnings_for_models(models, offline, log_level)
 }
 
 pub fn print_missing_pricing_warnings_for_models<'a>(
     models: impl IntoIterator<Item = &'a str>,
     offline: bool,
 ) {
-    for warning in missing_pricing_warnings_for_models(models, offline) {
+    for warning in missing_pricing_warnings_for_models(models, offline, crate::log_level()) {
         eprintln!("{warning}");
     }
 }
@@ -407,7 +411,12 @@ pub fn print_missing_pricing_warnings_for_models<'a>(
 fn missing_pricing_warnings_for_models<'a>(
     models: impl IntoIterator<Item = &'a str>,
     offline: bool,
+    log_level: Option<u8>,
 ) -> Vec<String> {
+    if log_level.unwrap_or(3) < 4 {
+        return Vec::new();
+    }
+
     let models = models.into_iter().collect::<BTreeSet<_>>();
 
     models
@@ -734,13 +743,41 @@ mod tests {
     }
 
     #[test]
+    fn missing_pricing_warnings_are_suppressed_below_debug() {
+        for level in [None, Some(0), Some(1), Some(2), Some(3)] {
+            for offline in [false, true] {
+                assert!(
+                    missing_pricing_warnings_for_models(["unknown-model"], offline, level)
+                        .is_empty(),
+                    "unexpected warning at {level:?}, offline={offline}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn missing_pricing_warnings_are_available_at_debug_and_trace() {
+        for level in [4, 5] {
+            for offline in [false, true] {
+                let warnings = missing_pricing_warnings_for_models(
+                    ["unknown-model", "unknown-model"],
+                    offline,
+                    Some(level),
+                );
+                assert_eq!(warnings.len(), 1);
+                assert!(warnings[0].contains("unknown-model"));
+            }
+        }
+    }
+
+    #[test]
     fn missing_pricing_warnings_deduplicate_models() {
         let mut row = snapshot_summary("2026-01-02", None, None);
         row.model_breakdowns[0].missing_pricing = true;
         row.model_breakdowns[1].missing_pricing = true;
 
         assert_eq!(
-            missing_pricing_warnings(&[row], false),
+            missing_pricing_warnings(&[row], false, Some(4)),
             vec![
                 "WARN  Missing pricing for claude-sonnet-4-20250514; cost excludes this model. Update pricing or run again after LiteLLM has the model.",
                 "WARN  Missing pricing for gpt-5.2-codex; cost excludes this model. Update pricing or run again after LiteLLM has the model.",
@@ -754,7 +791,7 @@ mod tests {
         row.model_breakdowns[0].missing_pricing = true;
 
         assert_eq!(
-            missing_pricing_warnings(&[row], true),
+            missing_pricing_warnings(&[row], true, Some(4)),
             vec![
                 "WARN  Missing embedded pricing for gpt-5.2-codex; cost excludes this model. Run without --offline or update ccusage after pricing is added.",
             ]

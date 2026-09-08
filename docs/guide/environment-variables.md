@@ -73,6 +73,10 @@ Controls the verbosity of log output.
 | Debug  | `4`   | Debug information            | Troubleshooting        |
 | Trace  | `5`   | All operations               | Deep debugging         |
 
+Missing-pricing warnings are suppressed by default, including in offline mode.
+Set `LOG_LEVEL=4` or higher to show them. Models without pricing still contribute
+tokens to reports, but their costs remain excluded.
+
 ### Usage Examples
 
 ```bash
